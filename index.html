@@ -10,7 +10,16 @@
 <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png" />
 <link rel="apple-touch-icon" href="apple-touch-icon.png" />
 <style>
-  :root{--bg:#12131a;--ink:#e9e6df;--road:#2a2d3c;--wall:#4b5aa8;--wall2:#2c3670;--enemy:#ff4d5a;}
+  /* 咲耶カラーのピンクを基調にする。危険色(敵・燃料警告)は橙赤へ逃がしてある。
+     ピンクのまま赤を使うと、CNP11体のうち紫〜桃のhue(トワ262/エマ292/マカミ322/
+     タルト352)とも混ざって「危険」が読めなくなるため（咲耶スクランブルも
+     magenta #FF2D9B と danger #FF4D2E を別に持っている） */
+  :root{
+    --bg:#150f1a; --ink:#f2e9ef; --road:#2a2233; --wall:#5f3a5f; --wall2:#3d243d;
+    --pink:#ff2d9b;      /* 徴: 自機・強調 */
+    --enemy:#ff4d2e;     /* 危険: 敵車・燃料警告 */
+    --gold:#e8c56a;      /* 二次: 枠 */
+  }
   *{box-sizing:border-box;margin:0;padding:0;}
   html,body{height:100%;}
   body{background:var(--bg);color:var(--ink);
@@ -19,44 +28,103 @@
     overflow:hidden;touch-action:none;-webkit-user-select:none;user-select:none;}
   #wrap{width:min(96vw,560px);}
   h1{font-size:clamp(15px,4vw,22px);letter-spacing:.14em;text-align:center;margin-bottom:6px;font-weight:800;}
-  h1 .g{color:var(--enemy);}
+  h1 .g{color:var(--pink);}
+
+  /* 既定は縦積み・幅基準。PCと縦持ちはこれで足りる。
+     DOM順は横並び(パッドが左)を優先しているので、縦積みでは order で並べ替える */
+  #play{display:flex;flex-direction:column;align-items:center;gap:10px;}
+  #stage{order:1;} #pad{order:2;} #side{order:3;}
   #stage{position:relative;width:100%;aspect-ratio:4/3;background:#000;
     border:3px solid var(--wall);border-radius:8px;box-shadow:5px 5px 0 var(--wall2);overflow:hidden;}
   canvas{display:block;width:100%;height:100%;image-rendering:pixelated;}
   #ov{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
-    gap:8px;background:rgba(18,19,26,.88);text-align:center;padding:16px;}
+    gap:8px;background:rgba(21,15,26,.9);text-align:center;padding:16px;}
   #ov.hidden{display:none;}
   #ov h2{font-size:clamp(18px,5vw,30px);letter-spacing:.06em;}
   #ov p{font-size:13px;opacity:.85;line-height:1.65;}
   #btn{margin-top:4px;font:inherit;font-weight:800;letter-spacing:.1em;padding:9px 20px;
-    background:var(--ink);color:var(--bg);border:none;border-radius:7px;box-shadow:3px 3px 0 var(--enemy);}
-  #btn:active{transform:translate(2px,2px);box-shadow:1px 1px 0 var(--enemy);}
-  #pad{margin-top:10px;display:grid;grid-template-columns:repeat(3,1fr);gap:6px;max-width:230px;margin:10px auto 0;}
+    background:var(--ink);color:var(--bg);border:none;border-radius:7px;box-shadow:3px 3px 0 var(--pink);}
+  #btn:active{transform:translate(2px,2px);box-shadow:1px 1px 0 var(--pink);}
+
+  #pad{display:grid;grid-template-columns:repeat(3,44px);gap:6px;}
   #pad button{font:inherit;font-weight:800;font-size:16px;padding:12px 0;border:2px solid var(--wall);
     background:var(--road);color:var(--ink);border-radius:8px;}
   #pad button:active{background:var(--wall2);}
   #pad .sp{visibility:hidden;}
-  #smk{grid-column:1/4;background:#5a2130;border-color:var(--enemy);}
+  #side{display:flex;flex-direction:column;align-items:center;gap:8px;}
+  /* 運転席の窓。咲耶スクランブルのパイロット窓と同じく琥珀のヘアラインで囲う */
+  #pilot{display:block;width:132px;max-width:100%;border:2px solid rgba(232,197,106,.5);border-radius:6px;}
+  #smk{font:inherit;font-weight:800;font-size:14px;padding:12px 18px;border-radius:8px;
+    background:#5a2130;border:2px solid var(--enemy);color:var(--ink);}
+  #smk:active{background:#7d2c42;}
+
   #hint{text-align:center;margin-top:8px;font-size:11px;opacity:.55;}
   .site-footer{text-align:center;margin-top:6px;font-size:10px;opacity:.45;line-height:1.6;}
-  @media(hover:hover) and (pointer:fine){ #pad{display:none;} }
+
+  /* PC: 十字パッドと煙ボタンは要らない(キーボード操作)。立ち絵はステージの横へ */
+  @media(hover:hover) and (pointer:fine){
+    #pad,#smk{display:none;}
+    /* 立ち絵をステージの横に置くぶん、枠を広げる。広げないとステージが縮む */
+    #wrap{width:min(96vw,720px);}
+    #play{flex-direction:row;align-items:flex-start;justify-content:center;gap:14px;}
+    #stage{order:1;width:560px;max-width:100%;flex:0 1 auto;}
+    #side{order:2;padding-top:4px;flex:0 0 auto;}
+  }
+
+  /* スマホ横持ち: 高さが足りず幅が余る。高さ基準に変え、パッドを左右へ逃がす。
+     幅基準のままだと iPhone 横持ちで 133px はみ出し、十字パッドが画面外に出る */
+  @media (orientation:landscape) and (max-height:600px) and (hover:none){
+    #wrap{width:100%;}
+    h1,#hint{display:none;}          /* 高さを稼ぐ。タイトルはスタート画面に出る */
+    #play{flex-direction:row;align-items:center;justify-content:center;gap:10px;}
+    #pad{order:1;} #stage{order:2;} #side{order:3;}
+    #stage{width:auto;height:min(calc(100svh - 34px),420px);box-shadow:3px 3px 0 var(--wall2);}
+    #pilot{width:clamp(84px,14vw,124px);}
+    .site-footer{margin-top:2px;font-size:9px;}
+  }
+  /* svh 非対応ブラウザ向けの保険 */
+  @supports not (height: 100svh){
+    @media (orientation:landscape) and (max-height:600px) and (hover:none){
+      #stage{height:min(calc(100vh - 34px),420px);}
+    }
+  }
+
+  /* 縦持ちはタイトルと遊び方。ゲームは横向きでのみ遊べる */
+  #rotate{position:fixed;inset:0;z-index:50;display:none;
+    flex-direction:column;align-items:center;justify-content:center;gap:10px;
+    background:var(--bg);text-align:center;padding:24px 18px;overflow-y:auto;}
+  #rotate.visible{display:flex;}
+  #rotate img{width:min(100%,420px);border-radius:8px;border:2px solid rgba(232,197,106,.45);}
+  #rotate h2{font-size:clamp(17px,5.2vw,24px);letter-spacing:.08em;}
+  #rotate h2 .g{color:var(--pink);}
+  /* 和文は 1ch が欧文の倍近い幅になるので ch 指定だと極端に狭くなる。
+     px で指定して、端末幅いっぱいまで使えるようにする */
+  #rotate .how{font-size:12.5px;line-height:1.8;opacity:.85;max-width:min(100%,380px);}
+  #rotate .turn{margin-top:4px;font-size:15px;font-weight:800;color:var(--gold);}
+  #rotate .icon{font-size:34px;line-height:1;}
+  #rotate .note{font-size:10px;opacity:.45;line-height:1.6;}
 </style>
 </head>
 <body>
 <div id="wrap">
   <h1>NOUN RALLY <span class="g">&#x2310;&#x25E8;-&#x25E8;</span> <span style="opacity:.4;font-size:.7em">proto v3</span></h1>
-  <div id="stage">
-    <canvas id="c" width="512" height="384"></canvas>
-    <div id="ov">
-      <h2 id="ovt">NOUN RALLY</h2>
-      <p id="ovp">CNP11体をぜんぶ回収せよ。<br>車は止まらない ― 曲がる方向だけ決める。<br>壁に当たると自動で右へ曲がる ― 行き止まりだけ跳ね返る。<br>赤い車に触れるとアウト。<br>SMOKE で敵はスピンするが、燃料を多く食う。<br>燃料が尽きたら終わり。<br><br>PC: 矢印/WASD で曲がる ・ Space で煙</p>
-      <button id="btn">START</button>
+  <div id="play">
+    <div id="pad">
+      <button class="sp"></button><button data-d="up">▲</button><button class="sp"></button>
+      <button data-d="left">◀</button><button data-d="down">▼</button><button data-d="right">▶</button>
     </div>
-  </div>
-  <div id="pad">
-    <button class="sp"></button><button data-d="up">▲</button><button class="sp"></button>
-    <button data-d="left">◀</button><button data-d="down">▼</button><button data-d="right">▶</button>
-    <button id="smk">SMOKE</button>
+    <div id="stage">
+      <canvas id="c" width="512" height="384"></canvas>
+      <div id="ov">
+        <h2 id="ovt">NOUN RALLY</h2>
+        <p id="ovp">CNP11体をぜんぶ回収せよ。<br>車は止まらない ― 曲がる方向だけ決める。<br>壁に当たると自動で右へ曲がる ― 行き止まりだけ跳ね返る。<br>赤い車に触れるとアウト。<br>SMOKE で敵はスピンするが、燃料を多く食う。<br>燃料が尽きたら終わり。<br><br>PC: 矢印/WASD で曲がる ・ Space で煙</p>
+        <button id="btn">START</button>
+      </div>
+    </div>
+    <div id="side">
+      <img id="pilot" src="assets/rally_pilot.png" alt="ラリーカーを運転する咲耶と、地図を広げるノグルズのナビゲーター">
+      <button id="smk" type="button">SMOKE</button>
+    </div>
   </div>
   <div id="hint">proto v3 ・ CNP11体は咲耶スクランブルと同じ正式アート＋正式名 ・ 自機は ⌐◨-◨ カー</div>
   <!-- ガイドラインの「公式を騙らない」に対応する表記。タイトルにIP名を掲げている
@@ -65,11 +133,44 @@
     本作は CryptoNinja / CryptoNinja Partners の非公式ファンアートです
   </footer>
 </div>
+
+<!-- 縦持ちの画面。タイトルと遊び方を見せ、遊ぶには横向きへ促す -->
+<div id="rotate" role="alert" aria-live="assertive">
+  <img src="assets/rally_title.jpg" alt="ラリーカーを運転する咲耶とノグルズのナビゲーター">
+  <h2>NOUN RALLY <span class="g">&#x2310;&#x25E8;-&#x25E8;</span></h2>
+  <p class="how">迷路に散らばった CNP 11体を全部回収せよ。<br>
+    車は止まらない ― 決められるのは曲がる方向だけ。<br>
+    赤い敵車に触れるとアウト。SMOKE でスピンさせられるが、燃料を多く食う。</p>
+  <div class="icon">📱⤴</div>
+  <p class="turn">横向きにしてください</p>
+  <p class="note">本作は CryptoNinja / CryptoNinja Partners の非公式ファンアートです</p>
+</div>
 <script>
 (() => {
   const cv=document.getElementById('c'), ctx=cv.getContext('2d');
   const VW=cv.width, VH=cv.height;
   const ov=document.getElementById('ov'), ovt=document.getElementById('ovt'), ovp=document.getElementById('ovp'), btn=document.getElementById('btn');
+  // 縦持ちではゲームを止め、タイトルと遊び方の画面を出す。
+  // 判定をイベント任せにしないこと。iOS Safari の orientationchange はビューポート
+  // (=メディアクエリ)の更新より先に発火することがあり、その時点の古い値で固定すると
+  // 横向きに戻しても再評価されず、遊べないまま固まる（咲耶スクランブルで実害が出た）
+  const rotateEl=document.getElementById('rotate');
+  const portraitMQ=window.matchMedia('(orientation: portrait)');
+  const isMobileDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+  let orientationBlocked=false;
+  function updateOrientation(){
+    const should = isMobileDevice && portraitMQ.matches;
+    if(should===orientationBlocked) return;
+    orientationBlocked=should;
+    rotateEl.classList.toggle('visible', should);
+  }
+  if(typeof portraitMQ.addEventListener==='function') portraitMQ.addEventListener('change',updateOrientation);
+  else if(typeof portraitMQ.addListener==='function') portraitMQ.addListener(updateOrientation);
+  addEventListener('orientationchange',updateOrientation);
+  addEventListener('resize',updateOrientation);
+  setInterval(updateOrientation,250);   // イベントの取りこぼしに対する保険
+  updateOrientation();
+
   const TILE=24, COLS=33, ROWS=25;
   const WW=COLS*TILE, WH=ROWS*TILE;
 
@@ -102,8 +203,10 @@
   const CHAR_SIZE=22;   // キャラの描画サイズ(px四方)。TILE=24に収まる寸法
   const CHAR_HIT=14;    // 回収の当たり判定。v2から据え置き
 
-  const C={ road:'#2a2d3c', wall:'#4b5aa8', wall2:'#2c3670', ink:'#e9e6df',
-           player:'#3fa9ff', enemy:'#ff4d5a', smoke:'#c9d2ff', rock:'#7a6b53', rock2:'#5a4d3a', radarBg:'#0c0d13' };
+  // 咲耶カラーのピンクを基調にする。player のマゼンタと enemy の橙赤を離してあるのは、
+  // 近い色にすると「自機」と「危険」が混ざって読めなくなるため
+  const C={ road:'#2a2233', wall:'#5f3a5f', wall2:'#3d243d', ink:'#f2e9ef',
+           player:'#ff2d9b', enemy:'#ff4d2e', smoke:'#e6d6f2', rock:'#7a6b53', rock2:'#5a4d3a', radarBg:'#120c18' };
 
   let grid, player, enemies, targets, smoke, cam, state, score, got, fuel, emitting, t, best;
   best = +(localStorage.getItem('nounrally_best')||0);
@@ -318,17 +421,20 @@
 
   function drawCar(c){
     ctx.save(); ctx.translate(c.x-cam.x,c.y-cam.y); ctx.rotate(c.ang);
-    ctx.fillStyle=c.color; ctx.fillRect(-9,-6,18,12);
     if(c.ai){
-      ctx.fillStyle='#12131a'; ctx.fillRect(2,-4,4,8);
+      ctx.fillStyle=c.color; ctx.fillRect(-9,-6,18,12);
+      ctx.fillStyle='#150f1a'; ctx.fillRect(2,-4,4,8);
     } else {
-      // 自機の車体。上下の縁を締めてノグルズが乗る面を作る
-      ctx.fillStyle='#0b2b4a'; ctx.fillRect(-9,-6,18,2); ctx.fillRect(-9,4,18,2);
+      // 自機は漆黒の車体にマゼンタのリムライト。ピンクを自機だけの徴にして、
+      // 敵の橙赤と混ざらないようにする
+      ctx.fillStyle='#141018'; ctx.fillRect(-9,-6,18,12);
+      ctx.fillStyle=c.color;
+      ctx.fillRect(-9,-6,18,2); ctx.fillRect(-9,4,18,2); ctx.fillRect(7,-5,2,10);
     }
     ctx.restore();
     // ノグルズは車体と一緒に回さない。真上から見た車が曲がっても
     // ⌐◨-◨ の顔が常に読めるようにしておく
-    if(!c.ai) drawNoggles(c.x-cam.x, c.y-cam.y, 16, 8, '#12131a');
+    if(!c.ai) drawNoggles(c.x-cam.x, c.y-cam.y, 16, 8, '#3a3040');
   }
 
   // 画像が未配置のスロット用の仮絵。差し替え待ちだと分かるよう「?」を入れてある
@@ -370,7 +476,7 @@
       by+=stepY;
     }
     placed.push({x:bx,y:by,w:bw,h:bh});
-    ctx.fillStyle='rgba(18,19,26,.75)'; ctx.fillRect(bx,by,bw,bh);
+    ctx.fillStyle='rgba(21,15,26,.8)'; ctx.fillRect(bx,by,bw,bh);
     ctx.fillStyle=ch.c; ctx.textAlign='center'; ctx.fillText(ch.n, px, by+7);
   }
   function render(){
@@ -393,20 +499,20 @@
     for(const e of enemies) drawCar(e);
     drawCar(player);
 
-    ctx.fillStyle='rgba(12,13,19,.75)'; ctx.fillRect(0,0,VW,22);
+    ctx.fillStyle='rgba(21,15,26,.8)'; ctx.fillRect(0,0,VW,22);
     ctx.fillStyle=C.ink; ctx.font='bold 12px ui-monospace,monospace'; ctx.textAlign='left';
     ctx.fillText('CNP '+got+'/'+NTARGET, 8,15);
     ctx.textAlign='center'; ctx.fillText('SCORE '+score, VW/2,15);
     ctx.textAlign='right'; ctx.fillText('BEST '+best, VW-8,15);
     // fuel = 制限時間
-    ctx.fillStyle='#0c0d13'; ctx.fillRect(8,VH-14,VW-112,10);
-    ctx.fillStyle = fuel<25? '#ff4d5a' : '#ffd23f';
+    ctx.fillStyle='#120c18'; ctx.fillRect(8,VH-14,VW-112,10);
+    ctx.fillStyle = fuel<25? '#ff4d2e' : '#ffd23f';
     ctx.fillRect(8,VH-14,Math.max(0,(VW-112)*fuel/100),10);
     ctx.fillStyle=C.ink; ctx.font='bold 8px ui-monospace,monospace'; ctx.textAlign='left'; ctx.fillText('FUEL',8,VH-16);
 
     const RW=92, RH=RW*ROWS/COLS, rx=VW-RW-6, ry=26, sx=RW/COLS, sy=RH/ROWS;
     ctx.fillStyle=C.radarBg; ctx.fillRect(rx-2,ry-2,RW+4,RH+4);
-    for(let y=0;y<ROWS;y++)for(let x=0;x<COLS;x++) if(grid[y][x]===1){ ctx.fillStyle='#242a4d'; ctx.fillRect(rx+x*sx,ry+y*sy,Math.ceil(sx),Math.ceil(sy)); }
+    for(let y=0;y<ROWS;y++)for(let x=0;x<COLS;x++) if(grid[y][x]===1){ ctx.fillStyle='#4a2d4a'; ctx.fillRect(rx+x*sx,ry+y*sy,Math.ceil(sx),Math.ceil(sy)); }
     for(const tg of targets){ if(tg.got) continue; ctx.fillStyle=tg.ch.c; ctx.fillRect(rx+(tg.x/TILE)*sx-1,ry+(tg.y/TILE)*sy-1,2,2); }
     for(const e of enemies){ ctx.fillStyle=C.enemy; ctx.fillRect(rx+(e.x/TILE)*sx-1,ry+(e.y/TILE)*sy-1,2,2); }
     ctx.fillStyle=C.player; ctx.fillRect(rx+(player.x/TILE)*sx-1,ry+(player.y/TILE)*sy-1,3,3);
@@ -415,7 +521,9 @@
   function loop(now){
     if(state!=='play') return;
     let dt=(now-last)/1000; last=now; if(dt>.05)dt=.05;
-    update(dt);
+    // 縦持ちの間は進行を止める。last は毎回更新しているので、横に戻したときに
+    // 溜まった時間がまとめて進むことはない
+    if(!orientationBlocked) update(dt);
     if(state==='play'){ render(); requestAnimationFrame(loop); }
   }
   function win(){ state='over'; finish('CLEAR!', 'CNP 11/11 &nbsp; SCORE '+score+' &nbsp; 残燃料 '+Math.round(fuel)); }
