@@ -46,11 +46,16 @@
     background:var(--ink);color:var(--bg);border:none;border-radius:7px;box-shadow:3px 3px 0 var(--pink);}
   #btn:active{transform:translate(2px,2px);box-shadow:1px 1px 0 var(--pink);}
 
-  #pad{display:grid;grid-template-columns:repeat(3,44px);gap:6px;}
-  #pad button{font:inherit;font-weight:800;font-size:16px;padding:12px 0;border:2px solid var(--wall);
-    background:var(--road);color:var(--ink);border-radius:8px;}
+  /* 十字キー。3行3列の中央十字だけを使う。以前は2行で ▼ が中央に来ており、
+     十字に見えないうえ下段が無かった */
+  #pad{display:grid;grid-template-columns:repeat(3,46px);grid-template-rows:repeat(3,46px);gap:6px;}
+  #pad button{font:inherit;font-weight:800;font-size:17px;padding:0;border:2px solid var(--wall);
+    background:var(--road);color:var(--ink);border-radius:8px;
+    display:flex;align-items:center;justify-content:center;}
   #pad button:active{background:var(--wall2);}
   #pad .sp{visibility:hidden;}
+  /* 中央のハブ。押せない見た目だけの部品で、4つの矢印が十字に見えるようつなぐ */
+  #pad .hub{border-radius:6px;background:var(--wall2);opacity:.45;}
   #side{display:flex;flex-direction:column;align-items:center;gap:8px;}
   /* 運転席の窓。咲耶スクランブルのパイロット窓と同じく琥珀のヘアラインで囲う */
   #pilot{display:block;width:132px;max-width:100%;border:2px solid rgba(232,197,106,.5);border-radius:6px;}
@@ -76,16 +81,27 @@
   @media (orientation:landscape) and (max-height:600px) and (hover:none){
     #wrap{width:100%;}
     h1,#hint{display:none;}          /* 高さを稼ぐ。タイトルはスタート画面に出る */
-    #play{flex-direction:row;align-items:center;justify-content:center;gap:10px;}
-    #pad{order:1;} #stage{order:2;} #side{order:3;}
-    #stage{width:auto;height:min(calc(100svh - 34px),420px);box-shadow:3px 3px 0 var(--wall2);}
+    /* 行の高さを画面いっぱいに取り、十字キーとSMOKEを画面の下端へ寄せる。
+       高さをステージ任せにすると、ステージが縮む端末(iPhone SE等)でつられて
+       上がってしまい、親指が届きにくくなる */
+    #play{flex-direction:row;align-items:stretch;justify-content:center;gap:10px;
+      height:calc(100svh - 26px);}
+    #pad{order:1;align-self:flex-end;margin-bottom:4px;}
+    #stage{order:2;align-self:center;}
+    #side{order:3;justify-content:space-between;}
+    /* 高さ基準にしつつ、横幅の残りでも頭打ちにする。高さだけで決めると
+       iPhone SE のような横幅の狭い端末で十字キーが画面端に張り付く。
+       320px は 十字キー(150) + 右列(110) + 隙間と余白(60) の見積もり */
+    #stage{width:auto;box-shadow:3px 3px 0 var(--wall2);
+      height:min(calc(100svh - 34px), 420px, calc((100vw - 320px) * 0.75));}
     #pilot{width:clamp(84px,14vw,124px);}
     .site-footer{margin-top:2px;font-size:9px;}
   }
   /* svh 非対応ブラウザ向けの保険 */
   @supports not (height: 100svh){
     @media (orientation:landscape) and (max-height:600px) and (hover:none){
-      #stage{height:min(calc(100vh - 34px),420px);}
+      #stage{height:min(calc(100vh - 34px), 420px, calc((100vw - 320px) * 0.75));}
+      #play{height:calc(100vh - 26px);}
     }
   }
 
@@ -111,7 +127,8 @@
   <div id="play">
     <div id="pad">
       <button class="sp"></button><button data-d="up">▲</button><button class="sp"></button>
-      <button data-d="left">◀</button><button data-d="down">▼</button><button data-d="right">▶</button>
+      <button data-d="left">◀</button><span class="hub" aria-hidden="true"></span><button data-d="right">▶</button>
+      <button class="sp"></button><button data-d="down">▼</button><button class="sp"></button>
     </div>
     <div id="stage">
       <canvas id="c" width="512" height="384"></canvas>
