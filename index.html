@@ -4,6 +4,11 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <title>NOUN RALLY ⌐◨-◨ (proto v3)</title>
+<!-- アイコンを明示しないとブラウザが /favicon.ico を自動で取りに行き、404になる。
+     apple-touch-iconは「ホーム画面に追加」でiOSが使う。
+     どちらも咲耶スクランブルと同じものを流用している -->
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png" />
+<link rel="apple-touch-icon" href="apple-touch-icon.png" />
 <style>
   :root{--bg:#12131a;--ink:#e9e6df;--road:#2a2d3c;--wall:#4b5aa8;--wall2:#2c3670;--enemy:#ff4d5a;}
   *{box-sizing:border-box;margin:0;padding:0;}
@@ -33,6 +38,7 @@
   #pad .sp{visibility:hidden;}
   #smk{grid-column:1/4;background:#5a2130;border-color:var(--enemy);}
   #hint{text-align:center;margin-top:8px;font-size:11px;opacity:.55;}
+  .site-footer{text-align:center;margin-top:6px;font-size:10px;opacity:.45;line-height:1.6;}
   @media(hover:hover) and (pointer:fine){ #pad{display:none;} }
 </style>
 </head>
@@ -53,6 +59,11 @@
     <button id="smk">SMOKE</button>
   </div>
   <div id="hint">proto v3 ・ CNP11体は咲耶スクランブルと同じ正式アート＋正式名 ・ 自機は ⌐◨-◨ カー</div>
+  <!-- ガイドラインの「公式を騙らない」に対応する表記。タイトルにIP名を掲げている
+       ので、非公式であることは常時読める場所に置いておく（咲耶スクランブルと同文） -->
+  <footer class="site-footer">
+    本作は CryptoNinja / CryptoNinja Partners の非公式ファンアートです
+  </footer>
 </div>
 <script>
 (() => {
