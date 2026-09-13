@@ -230,8 +230,27 @@
     return ch;
   });
   const NTARGET=CNP.length;
+  // 未収集の枠は実際の絵のシルエットで出す。「?」の仮絵にすると11枠が
+  // 全部同じ顔になり、あと誰が残っているのか読めなくなる（姉妹作の教訓）
+  const SIL_PX = 40;
+  function silhouette(ch){
+    if(ch.sil) return ch.sil;
+    if(!ch.ready) return null;          // 絵が来る前はキャッシュしない
+    const c=document.createElement('canvas'); c.width=c.height=SIL_PX;
+    const g=c.getContext('2d');
+    g.drawImage(ch.img,0,0,SIL_PX,SIL_PX);
+    g.globalCompositeOperation='source-in';
+    g.fillStyle=`hsl(${ch.hue},38%,26%)`;
+    g.fillRect(0,0,SIL_PX,SIL_PX);
+    ch.sil=c; return c;
+  }
 
   const CHAR_SIZE=22;   // キャラの描画サイズ(px四方)。TILE=24に収まる寸法
+  // 画面上段のロスター。11枠 x 20px + 隙間3px = 250px で canvas 614px の中央に収まる。
+  // 姉妹作(咲耶スクランブル)は canvas 960x540 に 36px 枠。こちらは canvas が
+  // 小さいので同じ比率まで落とした
+  const ROSTER = { slot:20, gap:3, y:24, flash:0.75 };   // flash は秒
+  const HUD_H = ROSTER.y + ROSTER.slot;                  // HUD帯の高さ(44px)
   const CHAR_HIT=14;    // 回収の当たり判定。v2から据え置き
 
   // 咲耶カラーのピンクを基調にする。player のマゼンタと enemy の橙赤を離してあるのは、
@@ -245,6 +264,7 @@
   // タイヤ痕。1マスにつき bit1=横に通った / bit2=縦に通った。
   // 方向を持つのは、痕を進行方向に沿った2本の線で描くため
   let paint, painted;     // painted は塗ったマス数（得点と踏破率に使う）
+  let rosterFlash;        // ロスターの枠が光る残り秒数。targets と同じ並び
   let exitCell, exitOpen; // 出口。11体そろうまで開かない
   let dryT;           // 燃料が尽きてからの経過秒。DRY_TIME で力尽きる
   best = +(localStorage.getItem('nounrally_best')||0);
@@ -391,6 +411,7 @@
     smoke=[]; cam={x:0,y:0}; score=0; got=0; fuel=100; emitting=false; t=0;
     lives=LIVES_START; invul=0; dryT=0;
     paint=new Uint8Array(COLS*ROWS); painted=0;
+    rosterFlash=new Float32Array(NTARGET);
     exitCell=farthestCell(grid); exitOpen=false;
     placePlayer();
     state='play'; ov.classList.add('hidden'); last=performance.now(); requestAnimationFrame(loop);
@@ -477,6 +498,7 @@
     // 最大でも 7.9px(2.625*3) で、TILE=24 を飛び越すことはない
     const k = dt*60;
     if(invul>0) invul-=dt;
+    for(let i=0;i<rosterFlash.length;i++) if(rosterFlash[i]>0) rosterFlash[i]-=dt;
     // 燃料切れは即死ではなく減速。そこから DRY_TIME 秒かけて止まり、
     // 止まった時点で終わる。stepCar より前に効かせる必要がある
     // （atCenter のしきい値が c.speed*k なので、速度と同じ値でないと壁を抜ける）
@@ -521,10 +543,12 @@
       if(e.spin>0) continue;
       for(const s of smoke){ if(Math.hypot(e.x-s.x,e.y-s.y)<s.r+8){ e.spin=1.8; break; } }
     }
-    for(const tg of targets){
+    for(let ti=0;ti<targets.length;ti++){
+      const tg=targets[ti];
       if(tg.got) continue;
       if(Math.hypot(player.x-tg.x,player.y-tg.y)<CHAR_HIT){
         tg.got=true; got++; score += 100 + got*20; beep(600+got*30,.07);
+        rosterFlash[ti]=ROSTER.flash;   // どの枠が埋まったか視線を誘導する
         // 11体そろっても即クリアにしない。出口が開き、そこへ戻るまでが一走り。
         // 戻る道中も塗れるので、最後に得点を伸ばす余地が残る
         if(got===NTARGET){ exitOpen=true; beep(880,.18,'triangle',.07); }
@@ -621,9 +645,9 @@
     // 先に置いた名札を避けて上へ逃がす
     ctx.font='bold 8px ui-monospace,monospace';
     const bw=Math.ceil(ctx.measureText(ch.n).width)+8, bh=9;
-    // 既定は頭上。上に逃がすとHUD帯(y<22)へ潜って読めなくなる位置なら、
-    // 最初から足元側に出して下へ逃がす
-    const above=(py-s/2-11)>=24, stepY=above?-(bh+2):(bh+2);
+    // 既定は頭上。上に逃がすとHUD帯へ潜って読めなくなる位置なら、
+    // 最初から足元側に出して下へ逃がす。基準は帯の高さ(HUD_H)に合わせること
+    const above=(py-s/2-11)>=HUD_H+2, stepY=above?-(bh+2):(bh+2);
     const bx=px-bw/2;
     let by=above? py-s/2-11 : py+s/2+2;
     for(let guard=0; guard<6; guard++){
@@ -670,7 +694,7 @@
     // 無敵の間は点滅させる。点滅していること自体が「いまは当たらない」の合図
     if(invul<=0 || ((t*9)|0)%2===0) drawCar(player);
 
-    ctx.fillStyle='rgba(21,15,26,.8)'; ctx.fillRect(0,0,VW,22);
+    ctx.fillStyle='rgba(21,15,26,.8)'; ctx.fillRect(0,0,VW,HUD_H);
     ctx.fillStyle=C.ink; ctx.font='bold 12px ui-monospace,monospace'; ctx.textAlign='left';
     ctx.fillText('CNP '+got+'/'+NTARGET, 8,15);
     ctx.textAlign='center';
@@ -689,6 +713,7 @@
       ctx.fillStyle=C.enemy;
       ctx.fillRect(8,VH-14,(VW-112)*left,10);
     }
+    drawRoster();
     ctx.fillStyle=C.ink; ctx.font='bold 8px ui-monospace,monospace'; ctx.textAlign='left'; ctx.fillText('FUEL',8,VH-16);
     // 燃料が尽きたら「減速した」ことを伝える。黙って遅くすると故障に見える
     if(fuel<=0 && ((t*3)|0)%2===0){
@@ -738,6 +763,42 @@
     if(rdEl.width!==cw){ rdEl.width=cw; rdEl.height=ch; }
     rdU=Math.max(1, cw/184);
     drawRadar(rdCtx, rdEl.width, rdEl.height, rdU);
+  }
+
+  // 画面上段のロスター。11枠を常に並べ、取った枠だけ絵を起こす。
+  //   未収集   … シルエット + 減光した琥珀の枠
+  //   収集済み … 絵を全光量 + キャラ色の枠
+  //   取った瞬間 … 枠が白く光る
+  // targets[i] の絵は CNP[i] なので、並び順はゲーム中ずっと変わらない
+  function drawRoster(){
+    const s=ROSTER.slot, gap=ROSTER.gap, y=ROSTER.y;
+    const totalW=NTARGET*s+(NTARGET-1)*gap;
+    const x0=Math.round((VW-totalW)/2);
+    for(let i=0;i<NTARGET;i++){
+      const tg=targets[i]; if(!tg) continue;
+      const ch=tg.ch, x=x0+i*(s+gap);
+      const has=tg.got;
+      const fl=rosterFlash[i]>0 ? rosterFlash[i]/ROSTER.flash : 0;
+      ctx.fillStyle = has ? 'rgba(21,15,26,.92)' : 'rgba(12,8,16,.82)';
+      ctx.fillRect(x,y,s,s);
+      ctx.save();
+      ctx.beginPath(); ctx.rect(x,y,s,s); ctx.clip();
+      const d=s*0.88, cx=x+s/2, cy=y+s/2;
+      if(has && ch.ready){
+        ctx.drawImage(ch.img, cx-d/2, cy-d/2, d, d);
+      }else{
+        const sil=silhouette(ch);
+        if(sil) ctx.drawImage(sil, cx-d/2, cy-d/2, d, d);
+        else { ctx.fillStyle='rgba(232,197,106,.18)'; ctx.fillRect(x+4,y+4,s-8,s-8); }
+      }
+      ctx.restore();
+      ctx.lineWidth=2;
+      ctx.strokeStyle = has
+        ? `hsla(${ch.hue},80%,${60+fl*35}%,${0.9+fl*0.1})`
+        : 'rgba(232,197,106,.26)';
+      ctx.strokeRect(x+1,y+1,s-2,s-2);
+      if(fl>0){ ctx.fillStyle=`rgba(255,255,255,${fl*0.45})`; ctx.fillRect(x,y,s,s); }
+    }
   }
 
   function loop(now){
@@ -872,6 +933,7 @@
   enemies=[]; targets=[]; smoke=[]; cam={x:0,y:0}; fuel=100; score=0; got=0; t=0;
   lives=LIVES_START; invul=0; dryT=0;
   paint=new Uint8Array(COLS*ROWS); painted=0;
+  rosterFlash=new Float32Array(NTARGET);
   exitCell=farthestCell(grid); exitOpen=false;
   render(); renderRadar();
 })();
