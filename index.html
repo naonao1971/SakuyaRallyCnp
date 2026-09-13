@@ -33,8 +33,10 @@
   /* 既定は縦積み・幅基準。PCと縦持ちはこれで足りる。
      DOM順は横並び(パッドが左)を優先しているので、縦積みでは order で並べ替える */
   #play{display:flex;flex-direction:column;align-items:center;gap:10px;}
-  #stage{order:1;} #pad{order:2;} #side{order:3;}
-  #stage{position:relative;width:100%;aspect-ratio:4/3;background:#000;
+  #stage{order:1;} #side{order:2;}
+  /* 16:10。高さ側で頭打ちになる端末では 4:3 だと横幅が余っていた
+     （iPhone 15 で53px、Pro Max で66px）。詳しくは README */
+  #stage{position:relative;width:100%;aspect-ratio:8/5;background:#000;
     border:3px solid var(--wall);border-radius:8px;box-shadow:5px 5px 0 var(--wall2);overflow:hidden;}
   canvas{display:block;width:100%;height:100%;image-rendering:pixelated;}
   #ov{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
@@ -46,17 +48,23 @@
     background:var(--ink);color:var(--bg);border:none;border-radius:7px;box-shadow:3px 3px 0 var(--pink);}
   #btn:active{transform:translate(2px,2px);box-shadow:1px 1px 0 var(--pink);}
 
-  /* 十字キー。3行3列の中央十字だけを使う。以前は2行で ▼ が中央に来ており、
-     十字に見えないうえ下段が無かった */
-  #pad{display:grid;grid-template-columns:repeat(3,46px);grid-template-rows:repeat(3,46px);gap:6px;}
-  #pad button{font:inherit;font-weight:800;font-size:17px;padding:0;border:2px solid var(--wall);
-    background:var(--road);color:var(--ink);border-radius:8px;
-    display:flex;align-items:center;justify-content:center;}
-  #pad button:active{background:var(--wall2);}
-  #pad .sp{visibility:hidden;}
-  /* 中央のハブ。押せない見た目だけの部品で、4つの矢印が十字に見えるようつなぐ */
-  #pad .hub{border-radius:6px;background:var(--wall2);opacity:.45;}
+  /* バーチャルスティック。触れた場所に出る浮動式で、指を離すと消える。
+     当たり判定は持たせない（pointer-events:none） */
+  #joyring{position:fixed;z-index:30;pointer-events:none;display:none;
+    width:64px;height:64px;margin:-32px 0 0 -32px;border-radius:50%;
+    border:2px solid rgba(242,233,239,.30);background:rgba(21,15,26,.30);}
+  #joyknob{position:fixed;z-index:31;pointer-events:none;display:none;
+    width:30px;height:30px;margin:-15px 0 0 -15px;border-radius:50%;
+    background:var(--pink);opacity:.85;box-shadow:0 0 0 2px rgba(242,233,239,.35);}
+  #joyring.on,#joyknob.on{display:block;}
   #side{display:flex;flex-direction:column;align-items:center;gap:8px;}
+  /* レーダーをコース外へ出す。立ち絵(4:3)と迷路(33:25=1.32)はほぼ同比率なので、
+     同じ幅で縦に並べると計器パネル2枚に見える。
+     height:auto を明示すること。上の canvas{height:100%} を受けると
+     aspect-ratio が無視されて縦に伸び、右列を食いつぶす */
+  #radar{display:block;width:100%;height:auto;aspect-ratio:33/25;
+    background:#120c18;border:2px solid rgba(232,197,106,.5);border-radius:6px;
+    image-rendering:pixelated;}
   /* 運転席の窓。咲耶スクランブルのパイロット窓と同じく琥珀のヘアラインで囲う */
   #pilot{display:block;width:132px;max-width:100%;border:2px solid rgba(232,197,106,.5);border-radius:6px;}
   #smk{font:inherit;font-weight:800;font-size:14px;padding:12px 18px;border-radius:8px;
@@ -68,39 +76,44 @@
 
   /* PC: 十字パッドと煙ボタンは要らない(キーボード操作)。立ち絵はステージの横へ */
   @media(hover:hover) and (pointer:fine){
-    #pad,#smk{display:none;}
+    #smk{display:none;}
     /* 立ち絵をステージの横に置くぶん、枠を広げる。広げないとステージが縮む */
-    #wrap{width:min(96vw,720px);}
+    #wrap{width:min(96vw,780px);}
     #play{flex-direction:row;align-items:flex-start;justify-content:center;gap:14px;}
-    #stage{order:1;width:560px;max-width:100%;flex:0 1 auto;}
-    #side{order:2;padding-top:4px;flex:0 0 auto;}
+    #stage{order:1;width:614px;max-width:100%;flex:0 1 auto;}  /* canvas と1:1 */
+    #side{order:2;padding-top:4px;flex:0 0 auto;width:150px;}
   }
 
-  /* スマホ横持ち: 高さが足りず幅が余る。高さ基準に変え、パッドを左右へ逃がす。
-     幅基準のままだと iPhone 横持ちで 133px はみ出し、十字パッドが画面外に出る */
+  /* スマホ横持ち: 高さが足りず幅が余る。高さ基準で組む。
+     十字キーを廃してスティックにしたので、左右に確保する幅は 320px → 140px */
   @media (orientation:landscape) and (max-height:600px) and (hover:none){
     #wrap{width:100%;}
     h1,#hint{display:none;}          /* 高さを稼ぐ。タイトルはスタート画面に出る */
     /* 行の高さを画面いっぱいに取り、十字キーとSMOKEを画面の下端へ寄せる。
        高さをステージ任せにすると、ステージが縮む端末(iPhone SE等)でつられて
        上がってしまい、親指が届きにくくなる */
-    #play{flex-direction:row;align-items:stretch;justify-content:center;gap:10px;
-      height:calc(100svh - 26px);}
-    #pad{order:1;align-self:flex-end;margin-bottom:4px;}
-    #stage{order:2;align-self:center;}
-    #side{order:3;justify-content:space-between;}
-    /* 高さ基準にしつつ、横幅の残りでも頭打ちにする。高さだけで決めると
-       iPhone SE のような横幅の狭い端末で十字キーが画面端に張り付く。
-       320px は 十字キー(150) + 右列(110) + 隙間と余白(60) の見積もり */
+    /* 左の余白は詰め、余った横幅は右列へ回す */
+    #play{flex-direction:row;align-items:stretch;justify-content:flex-start;gap:10px;
+      height:calc(100svh - 26px);padding-left:10px;}
+    #stage{order:1;align-self:center;flex:0 0 auto;}
+    /* ステージは縮まない側なので、右列は「ステージが使えなかった余り」だけを吸う。
+       横幅が制約になる端末(iPhone SE)では最小幅で止まり、ステージは削られない。
+       上限172pxは縦から決めた: 立ち絵0.75W + レーダー0.76W + ボタン + 隙間 */
+    #side{order:2;justify-content:space-between;align-items:stretch;
+      flex:1 1 auto;min-width:92px;max-width:172px;}
+    /* 右列の幅いっぱいに広げる。立ち絵は基本が132px固定なので上書きが要る */
+    #pilot{width:100%;}
+    #smk{width:100%;min-height:54px;font-size:15px;padding:12px 10px;}
+    /* 高さ基準にしつつ、横幅の残りでも頭打ちにする。
+       140px は 右列の最小(92) + 隙間と余白(48) の見積もり */
     #stage{width:auto;box-shadow:3px 3px 0 var(--wall2);
-      height:min(calc(100svh - 34px), 420px, calc((100vw - 320px) * 0.75));}
-    #pilot{width:clamp(84px,14vw,124px);}
+      height:min(calc(100svh - 34px), 420px, calc((100vw - 140px) / 1.6));}
     .site-footer{margin-top:2px;font-size:9px;}
   }
   /* svh 非対応ブラウザ向けの保険 */
   @supports not (height: 100svh){
     @media (orientation:landscape) and (max-height:600px) and (hover:none){
-      #stage{height:min(calc(100vh - 34px), 420px, calc((100vw - 320px) * 0.75));}
+      #stage{height:min(calc(100vh - 34px), 420px, calc((100vw - 140px) / 1.6));}
       #play{height:calc(100vh - 26px);}
     }
   }
@@ -125,21 +138,17 @@
 <div id="wrap">
   <h1>NOUN RALLY <span class="g">&#x2310;&#x25E8;-&#x25E8;</span> <span style="opacity:.4;font-size:.7em">proto v4</span></h1>
   <div id="play">
-    <div id="pad">
-      <button class="sp"></button><button data-d="up">▲</button><button class="sp"></button>
-      <button data-d="left">◀</button><span class="hub" aria-hidden="true"></span><button data-d="right">▶</button>
-      <button class="sp"></button><button data-d="down">▼</button><button class="sp"></button>
-    </div>
     <div id="stage">
-      <canvas id="c" width="512" height="384"></canvas>
+      <canvas id="c" width="614" height="384"></canvas>
       <div id="ov">
         <h2 id="ovt">NOUN RALLY</h2>
-        <p id="ovp">CNP11体をぜんぶ回収せよ。<br>車は止まらない ― 曲がる方向だけ決める。<br>壁に当たると自動で右へ曲がる ― 行き止まりだけ跳ね返る。<br>赤い車に触れるとクラッシュ。<br>SMOKE で敵はスピンするが、燃料を多く食う。<br>燃料が尽きると減速し、8秒で力尽きる。<br>車は3台。ぶつけても続きから走れる。<br><br>PC: 矢印/WASD で曲がる ・ Space で煙</p>
+        <p id="ovp">CNP11体をぜんぶ回収せよ。<br>車は止まらない ― 曲がる方向だけ決める。<br>壁に当たると自動で右へ曲がる ― 行き止まりだけ跳ね返る。<br>赤い車に触れるとクラッシュ。<br>SMOKE で敵はスピンするが、燃料を多く食う。<br>燃料が尽きると減速し、8秒で力尽きる。<br>車は3台。ぶつけても続きから走れる。<br><br>スマホ: 画面を押したまま倒して曲がる<br>PC: 矢印/WASD で曲がる ・ Space で煙</p>
         <button id="btn">START</button>
       </div>
     </div>
     <div id="side">
       <img id="pilot" src="assets/rally_pilot.png" alt="ラリーカーを運転する咲耶と、地図を広げるノグルズのナビゲーター">
+      <canvas id="radar" width="184" height="140" aria-hidden="true"></canvas>
       <button id="smk" type="button">SMOKE</button>
     </div>
   </div>
@@ -150,6 +159,9 @@
     本作は CryptoNinja / CryptoNinja Partners の非公式ファンアートです
   </footer>
 </div>
+
+<div id="joyring" aria-hidden="true"></div>
+<div id="joyknob" aria-hidden="true"></div>
 
 <!-- 縦持ちの画面。タイトルと遊び方を見せ、遊ぶには横向きへ促す -->
 <div id="rotate" role="alert" aria-live="assertive">
@@ -621,12 +633,38 @@
       ctx.fillStyle=C.player; ctx.fillRect(bx-10,by-5,11,3);    // 屋根はピンク＝自機の徴
     }
 
-    const RW=92, RH=RW*ROWS/COLS, rx=VW-RW-6, ry=26, sx=RW/COLS, sy=RH/ROWS;
-    ctx.fillStyle=C.radarBg; ctx.fillRect(rx-2,ry-2,RW+4,RH+4);
-    for(let y=0;y<ROWS;y++)for(let x=0;x<COLS;x++) if(grid[y][x]===1){ ctx.fillStyle='#4a2d4a'; ctx.fillRect(rx+x*sx,ry+y*sy,Math.ceil(sx),Math.ceil(sy)); }
-    for(const tg of targets){ if(tg.got) continue; ctx.fillStyle=tg.ch.c; ctx.fillRect(rx+(tg.x/TILE)*sx-1,ry+(tg.y/TILE)*sy-1,2,2); }
-    for(const e of enemies){ ctx.fillStyle=C.enemy; ctx.fillRect(rx+(e.x/TILE)*sx-1,ry+(e.y/TILE)*sy-1,2,2); }
-    ctx.fillStyle=C.player; ctx.fillRect(rx+(player.x/TILE)*sx-1,ry+(player.y/TILE)*sy-1,3,3);
+  }
+
+  // レーダーはコース画面の外(右列)に描く。画面内に重ねていたときは
+  // 自機がレーダーの下に潜り、7回に1回はCNPが見えないまま取りに行っていた。
+  // u は描画倍率（専用canvasは実寸×DPRで持つので1より大きい）
+  function drawRadar(g, RW, RH, u){
+    const sx=RW/COLS, sy=RH/ROWS;
+    g.fillStyle=C.radarBg; g.fillRect(0,0,RW,RH);
+    for(let y=0;y<ROWS;y++)for(let x=0;x<COLS;x++) if(grid[y][x]===1){
+      g.fillStyle='#4a2d4a'; g.fillRect(x*sx,y*sy,Math.ceil(sx),Math.ceil(sy)); }
+    // CNPは2x2の単色ドットだと11体の色が読めない。3x3＋白フチにし、
+    // 11体とも同じ位相で点滅させる。位相をバラすとチカチカして逆に読めない
+    if((t % 0.5) < 0.32) for(const tg of targets){ if(tg.got) continue;
+      const px=(tg.x/TILE)*sx, py=(tg.y/TILE)*sy;
+      g.fillStyle='#ffffff'; g.fillRect(px-2.5*u,py-2.5*u,5*u,5*u);
+      g.fillStyle=tg.ch.c;   g.fillRect(px-1.5*u,py-1.5*u,3*u,3*u); }
+    for(const e of enemies){ g.fillStyle=C.enemy;
+      g.fillRect((e.x/TILE)*sx-1*u,(e.y/TILE)*sy-1*u,2*u,2*u); }
+    g.fillStyle=C.player;
+    g.fillRect((player.x/TILE)*sx-1.5*u,(player.y/TILE)*sy-1.5*u,3*u,3*u);
+  }
+
+  // 専用canvasのCSS幅は端末で変わる。実寸×DPRで持たないとドットが潰れる
+  const rdEl=document.getElementById('radar'), rdCtx=rdEl.getContext('2d');
+  let rdU=1;
+  function renderRadar(){
+    const w=rdEl.clientWidth; if(!w) return;
+    const dpr=Math.min(window.devicePixelRatio||1, 3);
+    const cw=Math.round(w*dpr), ch=Math.round(cw*ROWS/COLS);
+    if(rdEl.width!==cw){ rdEl.width=cw; rdEl.height=ch; }
+    rdU=Math.max(1, cw/184);
+    drawRadar(rdCtx, rdEl.width, rdEl.height, rdU);
   }
 
   function loop(now){
@@ -635,7 +673,7 @@
     // 縦持ちの間は進行を止める。last は毎回更新しているので、横に戻したときに
     // 溜まった時間がまとめて進むことはない
     if(!orientationBlocked) update(dt);
-    if(state==='play'){ render(); requestAnimationFrame(loop); }
+    if(state==='play'){ render(); renderRadar(); requestAnimationFrame(loop); }
   }
   // クラッシュ。CNP・スコア・迷路は引き継ぎ、自機と敵の配置だけやり直す。
   // 燃料は戻さない ― 戻すと残機が事実上の延命チケットになり、
@@ -685,36 +723,78 @@
     // 押し足した後で古い方を離しても、新しい向きは保持したままにする
     if(e.code===heldCode){ heldCode=null; heldDir=null; }
   });
-  document.querySelectorAll('#pad [data-d]').forEach(b=>{
-    const m={up:{x:0,y:-1},down:{x:0,y:1},left:{x:-1,y:0},right:{x:1,y:0}};
-    const release=()=>{ if(heldCode==='pad:'+b.dataset.d){ heldCode=null; heldDir=null; } };
-    b.addEventListener('pointerdown',e=>{e.preventDefault();
-      if(state==='play'){ heldDir={...m[b.dataset.d]}; heldCode='pad:'+b.dataset.d;
-        player.want={...heldDir}; player.wantTimer=WANT_GRACE; player.wantFresh=true; }});
-    b.addEventListener('pointerup',release);
-    b.addEventListener('pointerleave',release);
-    b.addEventListener('pointercancel',release);
-  });
   const smk=document.getElementById('smk');
   smk.addEventListener('pointerdown',e=>{e.preventDefault();emitting=true;});
   smk.addEventListener('pointerup',()=>emitting=false);
   smk.addEventListener('pointerleave',()=>emitting=false);
-  let ts=null;
-  cv.addEventListener('pointerdown',e=>{ ts={x:e.clientX,y:e.clientY}; });
-  cv.addEventListener('pointerup',e=>{
-    if(!ts) return; const dx=e.clientX-ts.x, dy=e.clientY-ts.y; ts=null;
-    if(Math.abs(dx)<12&&Math.abs(dy)<12 || state!=='play') return;
-    player.want = Math.abs(dx)>Math.abs(dy)? {x:Math.sign(dx),y:0} : {x:0,y:Math.sign(dy)};
-    player.wantFresh = true;
-    player.wantTimer = WANT_GRACE;
+  // バーチャルスティック。触れた場所に出る浮動式で、出力は heldDir に入れる。
+  // つまり十字キーを押しっぱなしにしているのと同じ「状態」の入力になり、
+  // update() が毎フレーム予約を補充する。スワイプのような一回きりのイベントだと
+  // 予約の寿命を別に用意する必要があり、分岐が 0.19〜0.38秒ごとに来る
+  // （実測）この迷路では取りこぼしが出た
+  const JOY_DEAD = 12;     // 中心からこれ未満は無入力（いまの向きを保つ）
+  const JOY_R    = 24;     // 原点が指を追う半径
+  const JOY_HYST = 1.20;   // 別の軸へ乗り換えるのに要る優勢比
+  const ring=document.getElementById('joyring'), knob=document.getElementById('joyknob');
+  let joy=null;
+
+  // 4方向へ量子化する。素朴に |dx|>|dy| で決めると 45度付近で毎フレーム
+  // 左右にばたつくので、乗り換えには JOY_HYST 倍の優勢を要求する
+  function joyPick(dx,dy,cur){
+    const ax=Math.abs(dx), ay=Math.abs(dy);
+    if(Math.max(ax,ay) < JOY_DEAD) return cur;
+    if(!cur) return ax>ay ? {x:Math.sign(dx),y:0} : {x:0,y:Math.sign(dy)};
+    const horiz = cur.x!==0;
+    const flip  = horiz ? (ay > ax*JOY_HYST) : (ax > ay*JOY_HYST);
+    const useH  = horiz ? !flip : flip;
+    return useH ? {x:Math.sign(dx),y:0} : {x:0,y:Math.sign(dy)};
+  }
+  function joyShow(ox,oy,kx,ky){
+    ring.style.left=ox+'px'; ring.style.top=oy+'px';
+    knob.style.left=kx+'px'; knob.style.top=ky+'px';
+    ring.classList.add('on'); knob.classList.add('on');
+  }
+  cv.addEventListener('pointerdown',e=>{
+    if(state!=='play') return;
+    e.preventDefault();
+    joy={id:e.pointerId, ox:e.clientX, oy:e.clientY, dir:null};
+    joyShow(joy.ox,joy.oy,joy.ox,joy.oy);
   });
+  addEventListener('pointermove',e=>{
+    if(!joy || e.pointerId!==joy.id) return;
+    let dx=e.clientX-joy.ox, dy=e.clientY-joy.oy;
+    // 原点を指から半径 JOY_R 以内へ引きずる。固定にすると倒した方向のズレが
+    // 残り続け、直角へ変えるのに指を90px動かす必要があった（実測。追従だと30px）
+    const len=Math.hypot(dx,dy);
+    if(len > JOY_R){
+      joy.ox = e.clientX - dx/len*JOY_R;
+      joy.oy = e.clientY - dy/len*JOY_R;
+      dx = dx/len*JOY_R; dy = dy/len*JOY_R;
+    }
+    joyShow(joy.ox,joy.oy, joy.ox+dx, joy.oy+dy);
+    const d=joyPick(dx,dy,joy.dir);
+    if(!d) return;
+    const changed = !joy.dir || d.x!==joy.dir.x || d.y!==joy.dir.y;
+    joy.dir=d;
+    heldDir={...d}; heldCode='joy';
+    // wantFresh は「向きを変えた瞬間」だけ立てる。毎フレーム立てると後退の門が
+    // 開きっぱなしになり、以前直した勝手なUターンが戻ってくる
+    if(changed){ player.want={...d}; player.wantTimer=WANT_GRACE; player.wantFresh=true; }
+  });
+  const joyEnd=e=>{
+    if(joy && e.pointerId!==joy.id) return;
+    joy=null; ring.classList.remove('on'); knob.classList.remove('on');
+    if(heldCode==='joy'){ heldCode=null; heldDir=null; }
+  };
+  addEventListener('pointerup',joyEnd);
+  addEventListener('pointercancel',joyEnd);
   btn.addEventListener('click',e=>{ e.stopPropagation(); newGame(); });
 
   // idle preview
   grid=genMaze(); player=mkCar(1.5*TILE,1.5*TILE,C.player,false);
   enemies=[]; targets=[]; smoke=[]; cam={x:0,y:0}; fuel=100; score=0; got=0; t=0;
-  lives=LIVES_START; invul=0;
-  render();
+  lives=LIVES_START; invul=0; dryT=0;
+  render(); renderRadar();
 })();
 </script>
 </body>
