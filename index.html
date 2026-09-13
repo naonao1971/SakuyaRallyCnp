@@ -251,6 +251,9 @@
   // 小さいので同じ比率まで落とした
   const ROSTER = { slot:20, gap:3, y:24, flash:0.75 };   // flash は秒
   const HUD_H = ROSTER.y + ROSTER.slot;                  // HUD帯の高さ(44px)
+  // 迷路を描く領域は HUD 帯の下だけ。帯を半透明にして上に重ねるだけでは、
+  // 迷路や自機が帯の下に潜って読めなくなる（自機はスタート地点で y=36 に
+  // 来るので、44px の帯の真下に隠れる）。描画領域そのものを下げること
   const CHAR_HIT=14;    // 回収の当たり判定。v2から据え置き
 
   // 咲耶カラーのピンクを基調にする。player のマゼンタと enemy の橙赤を離してあるのは、
@@ -398,6 +401,7 @@
     heldDir=null; heldCode=null;
     const pdir=[{x:1,y:0},{x:0,y:1},{x:-1,y:0},{x:0,y:-1}].find(d=>!isWall(1+d.x,1+d.y)) || {x:1,y:0};
     player.dir={...pdir}; player.ang=Math.atan2(pdir.y,pdir.x);
+    syncCam();
   }
 
   function newGame(){
@@ -565,10 +569,17 @@
     if(fuel<0) fuel=0;   // 燃料切れでは終わらない。速度は update の先頭で落としている
     if(state!=='play') return;
 
-    cam.x=clamp(player.x-VW/2,0,Math.max(0,WW-VW));
-    cam.y=clamp(player.y-VH/2,0,Math.max(0,WH-VH));
+    syncCam();
   }
   const clamp=(v,a,b)=> v<a?a:v>b?b:v;
+
+  // カメラを自機に合わせる。update() の最後だけでなく、自機を動かした直後にも
+  // 呼ぶこと。crash() は update() を途中で抜けるので、ここを呼ばないと
+  // 復活した最初の1フレームだけ古いカメラで描かれ、自機が画面外に飛ぶ
+  function syncCam(){
+    cam.x=clamp(player.x-VW/2,0,Math.max(0,WW-VW));
+    cam.y=clamp(player.y-VIEW_H/2,0,Math.max(0,WH-VIEW_H));
+  }
 
   let actx;
   function beep(f,d,type='square',v=.05){
@@ -645,9 +656,9 @@
     // 先に置いた名札を避けて上へ逃がす
     ctx.font='bold 8px ui-monospace,monospace';
     const bw=Math.ceil(ctx.measureText(ch.n).width)+8, bh=9;
-    // 既定は頭上。上に逃がすとHUD帯へ潜って読めなくなる位置なら、
-    // 最初から足元側に出して下へ逃がす。基準は帯の高さ(HUD_H)に合わせること
-    const above=(py-s/2-11)>=HUD_H+2, stepY=above?-(bh+2):(bh+2);
+    // 既定は頭上。世界は帯の下へずらして描くので、基準は描画領域の上端(0)。
+    // 上に逃がすと切り落とされる位置なら、最初から足元側に出して下へ逃がす
+    const above=(py-s/2-11)>=2, stepY=above?-(bh+2):(bh+2);
     const bx=px-bw/2;
     let by=above? py-s/2-11 : py+s/2+2;
     for(let guard=0; guard<6; guard++){
@@ -658,10 +669,17 @@
     ctx.fillStyle='rgba(21,15,26,.8)'; ctx.fillRect(bx,by,bw,bh);
     ctx.fillStyle=ch.c; ctx.textAlign='center'; ctx.fillText(ch.n, px, by+7);
   }
+  const VIEW_H = VH - HUD_H;   // 迷路を描ける高さ
+
   function render(){
     ctx.fillStyle='#000'; ctx.fillRect(0,0,VW,VH);
+    // 以降の世界の描画はすべて帯の下へずらし、はみ出しは切り落とす。
+    // これで帯の下に迷路も車も入り込まない
+    ctx.save();
+    ctx.beginPath(); ctx.rect(0,HUD_H,VW,VIEW_H); ctx.clip();
+    ctx.translate(0,HUD_H);
     const x0=Math.floor(cam.x/TILE), y0=Math.floor(cam.y/TILE);
-    const x1=Math.ceil((cam.x+VW)/TILE), y1=Math.ceil((cam.y+VH)/TILE);
+    const x1=Math.ceil((cam.x+VW)/TILE), y1=Math.ceil((cam.y+VIEW_H)/TILE);
     for(let y=y0;y<=y1;y++)for(let x=x0;x<=x1;x++){
       if(x<0||y<0||x>=COLS||y>=ROWS) continue;
       const px=x*TILE-cam.x, py=y*TILE-cam.y, g=grid[y][x];
@@ -694,7 +712,11 @@
     // 無敵の間は点滅させる。点滅していること自体が「いまは当たらない」の合図
     if(invul<=0 || ((t*9)|0)%2===0) drawCar(player);
 
-    ctx.fillStyle='rgba(21,15,26,.8)'; ctx.fillRect(0,0,VW,HUD_H);
+    ctx.restore();   // 世界の描画はここまで
+
+    // HUD帯。下に迷路は無いので透かす必要がない。透かすと帯が読みにくくなる
+    ctx.fillStyle='#150f1a'; ctx.fillRect(0,0,VW,HUD_H);
+    ctx.fillStyle=C.wall2;  ctx.fillRect(0,HUD_H-2,VW,2);   // 境目のヘアライン
     ctx.fillStyle=C.ink; ctx.font='bold 12px ui-monospace,monospace'; ctx.textAlign='left';
     ctx.fillText('CNP '+got+'/'+NTARGET, 8,15);
     ctx.textAlign='center';
