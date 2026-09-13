@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>NOUN RALLY ⌐◨-◨ (proto v3)</title>
+<title>NOUN RALLY ⌐◨-◨ (proto v4)</title>
 <!-- アイコンを明示しないとブラウザが /favicon.ico を自動で取りに行き、404になる。
      apple-touch-iconは「ホーム画面に追加」でiOSが使う。
      どちらも咲耶スクランブルと同じものを流用している -->
@@ -123,7 +123,7 @@
 </head>
 <body>
 <div id="wrap">
-  <h1>NOUN RALLY <span class="g">&#x2310;&#x25E8;-&#x25E8;</span> <span style="opacity:.4;font-size:.7em">proto v3</span></h1>
+  <h1>NOUN RALLY <span class="g">&#x2310;&#x25E8;-&#x25E8;</span> <span style="opacity:.4;font-size:.7em">proto v4</span></h1>
   <div id="play">
     <div id="pad">
       <button class="sp"></button><button data-d="up">▲</button><button class="sp"></button>
@@ -134,7 +134,7 @@
       <canvas id="c" width="512" height="384"></canvas>
       <div id="ov">
         <h2 id="ovt">NOUN RALLY</h2>
-        <p id="ovp">CNP11体をぜんぶ回収せよ。<br>車は止まらない ― 曲がる方向だけ決める。<br>壁に当たると自動で右へ曲がる ― 行き止まりだけ跳ね返る。<br>赤い車に触れるとアウト。<br>SMOKE で敵はスピンするが、燃料を多く食う。<br>燃料が尽きたら終わり。<br><br>PC: 矢印/WASD で曲がる ・ Space で煙</p>
+        <p id="ovp">CNP11体をぜんぶ回収せよ。<br>車は止まらない ― 曲がる方向だけ決める。<br>壁に当たると自動で右へ曲がる ― 行き止まりだけ跳ね返る。<br>赤い車に触れるとクラッシュ。<br>SMOKE で敵はスピンするが、燃料を多く食う。<br>燃料が尽きると減速し、8秒で力尽きる。<br>車は3台。ぶつけても続きから走れる。<br><br>PC: 矢印/WASD で曲がる ・ Space で煙</p>
         <button id="btn">START</button>
       </div>
     </div>
@@ -143,7 +143,7 @@
       <button id="smk" type="button">SMOKE</button>
     </div>
   </div>
-  <div id="hint">proto v3 ・ CNP11体は咲耶スクランブルと同じ正式アート＋正式名 ・ 自機は ⌐◨-◨ カー</div>
+  <div id="hint">proto v4 ・ CNP11体は咲耶スクランブルと同じ正式アート＋正式名 ・ 自機は ⌐◨-◨ カー</div>
   <!-- ガイドラインの「公式を騙らない」に対応する表記。タイトルにIP名を掲げている
        ので、非公式であることは常時読める場所に置いておく（咲耶スクランブルと同文） -->
   <footer class="site-footer">
@@ -157,7 +157,8 @@
   <h2>NOUN RALLY <span class="g">&#x2310;&#x25E8;-&#x25E8;</span></h2>
   <p class="how">迷路に散らばった CNP 11体を全部回収せよ。<br>
     車は止まらない ― 決められるのは曲がる方向だけ。<br>
-    赤い敵車に触れるとアウト。SMOKE でスピンさせられるが、燃料を多く食う。</p>
+    赤い敵車に触れるとクラッシュ。車は3台まで。<br>
+    SMOKE でスピンさせられるが、燃料を多く食う。燃料が尽きると減速し、やがて力尽きる。</p>
   <div class="icon">📱⤴</div>
   <p class="turn">横向きにしてください</p>
   <p class="note">本作は CryptoNinja / CryptoNinja Partners の非公式ファンアートです</p>
@@ -226,6 +227,8 @@
            player:'#ff2d9b', enemy:'#ff4d2e', smoke:'#e6d6f2', rock:'#7a6b53', rock2:'#5a4d3a', radarBg:'#120c18' };
 
   let grid, player, enemies, targets, smoke, cam, state, score, got, fuel, emitting, t, best;
+  let lives, invul;   // 残機と、復活後の無敵の残り秒数
+  let dryT;           // 燃料が尽きてからの経過秒。DRY_TIME で力尽きる
   best = +(localStorage.getItem('nounrally_best')||0);
 
   function genMaze(){
@@ -285,6 +288,24 @@
   // 曲がり角の手前で早めに押した入力を拾うためのもので、長くしすぎると
   // 「ずっと前に押した向き」に勝手に曲がる
   const WANT_GRACE = 0.25;
+
+  // 速度。実機で 1.25 倍がいちばん良いと決まったので、元の値に掛けて固定した。
+  // 自機と敵の比 1.20 は変えていない（変えると敵の脅威度が別物になる）
+  const SPD_PLAYER = 2.625;    // 2.1  * 1.25
+  const SPD_ENEMY  = 2.1875;   // 1.75 * 1.25
+  // 燃料切れ後。敵(2.1875)より遅いので必ず追いつかれるが、
+  // 残り数体を拾いに行く余地は残る（本家ラリーXと同じ扱い）
+  const SPD_DRY    = 1.75;     // 1.4  * 1.25
+  // 燃料切れから完全に止まるまでの秒数。
+  // 「減速するだけ」にしたら実測で6回中2回は30秒たっても捕まらなかった。
+  // 効いていたのは速度差ではなく「敵が自機を見つけるまでの時間」で、
+  // 自機を敵の半分以下(1.0)まで落としても 5回中1回しか捕まらない。
+  // 速度で殴っても終わらないので、止まるまでの時間で区切る。
+  // 8秒あれば平均0.875px/frameで約17マス走れるので、近くの1体を拾う余地は残る
+  const DRY_TIME   = 8;
+
+  const LIVES_START = 3;       // 車は3台
+  const INVUL = 2.0;           // 復活後の無敵(秒)
   let heldDir=null, heldCode=null;   // いま押されている方向キー
 
   function mkCar(x,y,color,ai){
@@ -293,23 +314,39 @@
     // want が null なら「予約なし」。dir と同じ値を入れる方式だと、その後に
     // 車が自動で曲がった瞬間 want と dir がズレて予約として復活してしまう
     return { x,y,color,ai, dir:{x:1,y:0}, want:null, wantFresh:false, wantTimer:0,
-             speed:(ai?1.75:2.1), spin:0, ang:0 };
+             speed:(ai?SPD_ENEMY:SPD_PLAYER), spin:0, ang:0 };
+  }
+
+  // 敵はスタート地点(1,1)から遠い側に置く。復活のたびに置き直すので、
+  // 復活した瞬間に目の前に敵がいる事故が起きない
+  function placeEnemies(){
+    const cells=openCells();
+    enemies=[];
+    const far=cells.filter(([x,y])=>(x+y)>(COLS+ROWS)*0.55).sort(()=>Math.random()-.5);
+    for(let i=0;i<4;i++){ const [x,y]=far[i]||cells[cells.length-1-i];
+      const e=mkCar((x+.5)*TILE,(y+.5)*TILE,C.enemy,true); e.dir={x:-1,y:0}; e.want={x:-1,y:0}; enemies.push(e); }
+  }
+
+  // 自機をスタート地点へ戻す。走り出す向きは開いている方向から選ぶ
+  function placePlayer(){
+    player.x=1.5*TILE; player.y=1.5*TILE; player.spin=0;
+    player.want=null; player.wantFresh=false; player.wantTimer=0;
+    heldDir=null; heldCode=null;
+    const pdir=[{x:1,y:0},{x:0,y:1},{x:-1,y:0},{x:0,y:-1}].find(d=>!isWall(1+d.x,1+d.y)) || {x:1,y:0};
+    player.dir={...pdir}; player.ang=Math.atan2(pdir.y,pdir.x);
   }
 
   function newGame(){
     grid=genMaze();
     const cells=openCells();
     player=mkCar(1.5*TILE,1.5*TILE,C.player,false);
-    enemies=[];
-    const far=cells.filter(([x,y])=>(x+y)>(COLS+ROWS)*0.55).sort(()=>Math.random()-.5);
-    for(let i=0;i<4;i++){ const [x,y]=far[i]||cells[cells.length-1-i]; const e=mkCar((x+.5)*TILE,(y+.5)*TILE,C.enemy,true); e.dir={x:-1,y:0};e.want={x:-1,y:0}; enemies.push(e); }
+    placeEnemies();
     targets=[];
     const pool=cells.filter(([x,y])=>!(x<5&&y<5)).sort(()=>Math.random()-.5);
     for(let i=0;i<NTARGET;i++){ const [x,y]=pool[i]; targets.push({x:(x+.5)*TILE,y:(y+.5)*TILE,got:false,ch:CNP[i]}); }
     smoke=[]; cam={x:0,y:0}; score=0; got=0; fuel=100; emitting=false; t=0;
-    // スポーン地点で開いている方向へ走り出す（前が壁だと動けないため）
-    const pdir=[{x:1,y:0},{x:0,y:1},{x:-1,y:0},{x:0,y:-1}].find(d=>!isWall(1+d.x,1+d.y)) || {x:1,y:0};
-    player.dir={...pdir}; player.want=null;
+    lives=LIVES_START; invul=0; dryT=0;
+    placePlayer();
     state='play'; ov.classList.add('hidden'); last=performance.now(); requestAnimationFrame(loop);
   }
 
@@ -391,8 +428,18 @@
   function update(dt){
     t+=dt;
     // dt は loop() で 0.05 秒に制限済みなので k は最大 3。1フレームの移動量は
-    // 最大でも 6.3px で、TILE=24 を飛び越すことはない
+    // 最大でも 7.9px(2.625*3) で、TILE=24 を飛び越すことはない
     const k = dt*60;
+    if(invul>0) invul-=dt;
+    // 燃料切れは即死ではなく減速。そこから DRY_TIME 秒かけて止まり、
+    // 止まった時点で終わる。stepCar より前に効かせる必要がある
+    // （atCenter のしきい値が c.speed*k なので、速度と同じ値でないと壁を抜ける）
+    if(fuel>0){ player.speed = SPD_PLAYER; }
+    else {
+      dryT += dt;
+      if(dryT >= DRY_TIME){ lose('OUT OF FUEL'); return; }
+      player.speed = SPD_DRY * (1 - dryT/DRY_TIME);
+    }
     // 予約の寿命。押している間は補充し続け、離すと WANT_GRACE 秒で消える。
     // 消えた状態(want===dir)では下の自動規則だけで走るので、何も押していない
     // ときの動きは「直進 → 壁で右折 → 左折 → 袋小路ならUターン」に固定される。
@@ -424,11 +471,12 @@
         if(got===NTARGET){ win(); return; }
       }
     }
-    for(const e of enemies){
+    if(invul<=0) for(const e of enemies){
       if(e.spin>0) continue;
-      if(Math.hypot(player.x-e.x,player.y-e.y)<15){ lose('CRASHED'); return; }
+      if(Math.hypot(player.x-e.x,player.y-e.y)<15){ crash(); return; }
     }
-    if(fuel<=0){ fuel=0; lose('OUT OF FUEL'); return; }
+    if(fuel<0) fuel=0;   // 燃料切れでは終わらない。速度は update の先頭で落としている
+    if(state!=='play') return;
 
     cam.x=clamp(player.x-VW/2,0,Math.max(0,WW-VW));
     cam.y=clamp(player.y-VH/2,0,Math.max(0,WH-VH));
@@ -541,7 +589,8 @@
     ctx.globalAlpha=1;
     const placed=[]; for(const tg of targets){ if(!tg.got) drawChar(tg,placed); }
     for(const e of enemies) drawCar(e);
-    drawCar(player);
+    // 無敵の間は点滅させる。点滅していること自体が「いまは当たらない」の合図
+    if(invul<=0 || ((t*9)|0)%2===0) drawCar(player);
 
     ctx.fillStyle='rgba(21,15,26,.8)'; ctx.fillRect(0,0,VW,22);
     ctx.fillStyle=C.ink; ctx.font='bold 12px ui-monospace,monospace'; ctx.textAlign='left';
@@ -550,9 +599,27 @@
     ctx.textAlign='right'; ctx.fillText('BEST '+best, VW-8,15);
     // fuel = 制限時間
     ctx.fillStyle='#120c18'; ctx.fillRect(8,VH-14,VW-112,10);
-    ctx.fillStyle = fuel<25? '#ff4d2e' : '#ffd23f';
-    ctx.fillRect(8,VH-14,Math.max(0,(VW-112)*fuel/100),10);
+    if(fuel>0){
+      ctx.fillStyle = fuel<25? '#ff4d2e' : '#ffd23f';
+      ctx.fillRect(8,VH-14,Math.max(0,(VW-112)*fuel/100),10);
+    }else{
+      // 燃料が尽きたら、バーは「力尽きるまでの残り」を示す
+      const left=Math.max(0,1-dryT/DRY_TIME);
+      ctx.fillStyle=C.enemy;
+      ctx.fillRect(8,VH-14,(VW-112)*left,10);
+    }
     ctx.fillStyle=C.ink; ctx.font='bold 8px ui-monospace,monospace'; ctx.textAlign='left'; ctx.fillText('FUEL',8,VH-16);
+    // 燃料が尽きたら「減速した」ことを伝える。黙って遅くすると故障に見える
+    if(fuel<=0 && ((t*3)|0)%2===0){
+      ctx.fillStyle=C.enemy; ctx.font='bold 9px ui-monospace,monospace';
+      ctx.fillText('OUT OF FUEL - '+Math.ceil(DRY_TIME-dryT), 36, VH-16);
+    }
+    // 残りの車。いま走っている1台は数えない（アーケードの流儀）
+    for(let i=0;i<Math.max(0,lives-1);i++){
+      const bx=VW-14-i*15, by=VH-9;
+      ctx.fillStyle=C.wall2;  ctx.fillRect(bx-10,by-5,11,10);   // 車体。背景と同色だと潰れる
+      ctx.fillStyle=C.player; ctx.fillRect(bx-10,by-5,11,3);    // 屋根はピンク＝自機の徴
+    }
 
     const RW=92, RH=RW*ROWS/COLS, rx=VW-RW-6, ry=26, sx=RW/COLS, sy=RH/ROWS;
     ctx.fillStyle=C.radarBg; ctx.fillRect(rx-2,ry-2,RW+4,RH+4);
@@ -570,13 +637,26 @@
     if(!orientationBlocked) update(dt);
     if(state==='play'){ render(); requestAnimationFrame(loop); }
   }
+  // クラッシュ。CNP・スコア・迷路は引き継ぎ、自機と敵の配置だけやり直す。
+  // 燃料は戻さない ― 戻すと残機が事実上の延命チケットになり、
+  // 「時計」が燃料と残機の二重になって緊張感が薄れる
+  function crash(){
+    lives--;
+    beep(90,.30,'sawtooth',.07);
+    if(lives<=0){ lose('CRASHED'); return; }
+    placePlayer();
+    placeEnemies();
+    smoke.length=0;
+    invul=INVUL;
+  }
+
   function win(){ state='over'; finish('CLEAR!', 'CNP 11/11 &nbsp; SCORE '+score+' &nbsp; 残燃料 '+Math.round(fuel)); }
   function lose(r){ state='over'; finish('GAME OVER', r+' &nbsp;/&nbsp; SCORE '+score+' (CNP '+got+'/'+NTARGET+')'); }
   function finish(title,sub){
     if(score>best){ best=score; localStorage.setItem('nounrally_best',best); }
     beep(150,.28,'sawtooth',.06);
     ovt.textContent=title;
-    ovp.innerHTML=sub+'<br><br>車は止まらない。曲がる方向だけ決める。<br>壁に当たると自動で右へ曲がる。行き止まりは跳ね返る。<br>SMOKE は燃料を多く食う ― 使いどころ注意。';
+    ovp.innerHTML=sub+'<br><br>車は止まらない。曲がる方向だけ決める。<br>壁に当たると自動で右へ曲がる。行き止まりは跳ね返る。<br>燃料が尽きると減速し、8秒で力尽きる。<br>SMOKE は燃料を多く食う ― 使いどころ注意。';
     btn.textContent='RETRY'; ov.classList.remove('hidden');
   }
 
@@ -633,6 +713,7 @@
   // idle preview
   grid=genMaze(); player=mkCar(1.5*TILE,1.5*TILE,C.player,false);
   enemies=[]; targets=[]; smoke=[]; cam={x:0,y:0}; fuel=100; score=0; got=0; t=0;
+  lives=LIVES_START; invul=0;
   render();
 })();
 </script>
