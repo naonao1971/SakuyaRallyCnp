@@ -142,7 +142,7 @@
       <canvas id="c" width="614" height="384"></canvas>
       <div id="ov">
         <h2 id="ovt">NOUN RALLY</h2>
-        <p id="ovp">CNP11体をぜんぶ回収せよ。<br>車は止まらない ― 曲がる方向だけ決める。<br>壁に当たると自動で右へ曲がる ― 行き止まりだけ跳ね返る。<br>赤い車に触れるとクラッシュ。<br>SMOKE で敵はスピンするが、燃料を多く食う。<br>燃料が尽きると減速し、8秒で力尽きる。<br>車は3台。ぶつけても続きから走れる。<br><br>スマホ: 画面を押したまま倒して曲がる<br>PC: 矢印/WASD で曲がる ・ Space で煙</p>
+        <p id="ovp">CNP11体をぜんぶ回収し、出口へ戻れ。<br>通った跡は得点になる ― 走った距離がそのままスコア。<br>車は止まらない ― 曲がる方向だけ決める。<br>壁に当たると自動で右へ曲がる ― 行き止まりだけ跳ね返る。<br>赤い車に触れるとクラッシュ。<br>SMOKE で敵はスピンするが、燃料を多く食う。<br>燃料が尽きると減速し、8秒で力尽きる。<br>車は3台。ぶつけても続きから走れる。<br><br>スマホ: 画面を押したまま倒して曲がる<br>PC: 矢印/WASD で曲がる ・ Space で煙</p>
         <button id="btn">START</button>
       </div>
     </div>
@@ -167,7 +167,8 @@
 <div id="rotate" role="alert" aria-live="assertive">
   <img src="assets/rally_title.jpg" alt="ラリーカーを運転する咲耶とノグルズのナビゲーター">
   <h2>NOUN RALLY <span class="g">&#x2310;&#x25E8;-&#x25E8;</span></h2>
-  <p class="how">迷路に散らばった CNP 11体を全部回収せよ。<br>
+  <p class="how">迷路に散らばった CNP 11体を全部回収し、出口へ戻れ。<br>
+    通った跡は得点になる。<br>
     車は止まらない ― 決められるのは曲がる方向だけ。<br>
     赤い敵車に触れるとクラッシュ。車は3台まで。<br>
     SMOKE でスピンさせられるが、燃料を多く食う。燃料が尽きると減速し、やがて力尽きる。</p>
@@ -236,10 +237,15 @@
   // 咲耶カラーのピンクを基調にする。player のマゼンタと enemy の橙赤を離してあるのは、
   // 近い色にすると「自機」と「危険」が混ざって読めなくなるため
   const C={ road:'#2a2233', wall:'#5f3a5f', wall2:'#3d243d', ink:'#f2e9ef',
-           player:'#ff2d9b', enemy:'#ff4d2e', smoke:'#e6d6f2', rock:'#7a6b53', rock2:'#5a4d3a', radarBg:'#120c18' };
+           player:'#ff2d9b', enemy:'#ff4d2e', smoke:'#e6d6f2', rock:'#7a6b53', rock2:'#5a4d3a',
+           radarBg:'#120c18', wall2:'#3d243d', tire:'rgba(242,233,239,.11)', exit:'#ffd23f' };
 
   let grid, player, enemies, targets, smoke, cam, state, score, got, fuel, emitting, t, best;
   let lives, invul;   // 残機と、復活後の無敵の残り秒数
+  // タイヤ痕。1マスにつき bit1=横に通った / bit2=縦に通った。
+  // 方向を持つのは、痕を進行方向に沿った2本の線で描くため
+  let paint, painted;     // painted は塗ったマス数（得点と踏破率に使う）
+  let exitCell, exitOpen; // 出口。11体そろうまで開かない
   let dryT;           // 燃料が尽きてからの経過秒。DRY_TIME で力尽きる
   best = +(localStorage.getItem('nounrally_best')||0);
 
@@ -292,6 +298,29 @@
   }
 
   const isWall=(cx,cy)=> cx<0||cy<0||cx>=COLS||cy>=ROWS|| grid[cy][cx]!==0;
+  // スタート(1,1)から最も遠い通路マス。出口をここに置く。
+  // スタート地点に置くと、11体そろえたあとわざとクラッシュすれば
+  // 復活位置＝出口になって即クリアできてしまう
+  function farthestCell(g){
+    const dist=new Int16Array(COLS*ROWS).fill(-1);
+    let q=[[1,1]]; dist[1*COLS+1]=0; let best=[1,1], bestD=0;
+    while(q.length){
+      const nq=[];
+      for(const [x,y] of q){
+        const d=dist[y*COLS+x];
+        if(d>bestD){ bestD=d; best=[x,y]; }
+        for(const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]]){
+          const nx=x+dx, ny=y+dy;
+          if(nx<0||ny<0||nx>=COLS||ny>=ROWS) continue;
+          if(g[ny][nx]!==0 || dist[ny*COLS+nx]>=0) continue;
+          dist[ny*COLS+nx]=d+1; nq.push([nx,ny]);
+        }
+      }
+      q=nq;
+    }
+    return best;
+  }
+
   function openCells(){
     const l=[]; for(let y=1;y<ROWS-1;y++)for(let x=1;x<COLS-1;x++) if(grid[y][x]===0) l.push([x,y]); return l;
   }
@@ -315,6 +344,9 @@
   // 速度で殴っても終わらないので、止まるまでの時間で区切る。
   // 8秒あれば平均0.875px/frameで約17マス走れるので、近くの1体を拾う余地は残る
   const DRY_TIME   = 8;
+
+  const PAINT_PTS  = 5;        // タイヤ痕を1マス残すごとの得点
+  const GOAL_BONUS = 800;      // 11体そろえて出口へ戻ったときのボーナス
 
   const LIVES_START = 3;       // 車は3台
   const INVUL = 2.0;           // 復活後の無敵(秒)
@@ -358,6 +390,8 @@
     for(let i=0;i<NTARGET;i++){ const [x,y]=pool[i]; targets.push({x:(x+.5)*TILE,y:(y+.5)*TILE,got:false,ch:CNP[i]}); }
     smoke=[]; cam={x:0,y:0}; score=0; got=0; fuel=100; emitting=false; t=0;
     lives=LIVES_START; invul=0; dryT=0;
+    paint=new Uint8Array(COLS*ROWS); painted=0;
+    exitCell=farthestCell(grid); exitOpen=false;
     placePlayer();
     state='play'; ov.classList.add('hidden'); last=performance.now(); requestAnimationFrame(loop);
   }
@@ -464,6 +498,17 @@
     stepCar(player,k);
     for(const e of enemies){ aiThink(e,k); stepCar(e,k); }
 
+    // タイヤ痕。いま居るマスに、進んでいる向きの軸を記録する。
+    // 一度塗ったマスは二度と加点しない（クラッシュしても痕は引き継ぐ）
+    {
+      const cx=Math.floor(player.x/TILE), cy=Math.floor(player.y/TILE);
+      if(cx>=0&&cy>=0&&cx<COLS&&cy<ROWS){
+        const i=cy*COLS+cx, bit=player.dir.x!==0 ? 1 : 2;
+        if(paint[i]===0){ painted++; score+=PAINT_PTS; }
+        paint[i] |= bit;
+      }
+    }
+
     // fuel: base drain + extra while laying smoke (本家: 煙は燃料を食う)
     const laying = emitting && fuel>0;
     fuel -= dt*(1.3 + (laying?3.2:0));
@@ -480,8 +525,14 @@
       if(tg.got) continue;
       if(Math.hypot(player.x-tg.x,player.y-tg.y)<CHAR_HIT){
         tg.got=true; got++; score += 100 + got*20; beep(600+got*30,.07);
-        if(got===NTARGET){ win(); return; }
+        // 11体そろっても即クリアにしない。出口が開き、そこへ戻るまでが一走り。
+        // 戻る道中も塗れるので、最後に得点を伸ばす余地が残る
+        if(got===NTARGET){ exitOpen=true; beep(880,.18,'triangle',.07); }
       }
+    }
+    if(exitOpen){
+      const ex=(exitCell[0]+.5)*TILE, ey=(exitCell[1]+.5)*TILE;
+      if(Math.hypot(player.x-ex,player.y-ey)<CHAR_HIT){ score+=GOAL_BONUS; win(); return; }
     }
     if(invul<=0) for(const e of enemies){
       if(e.spin>0) continue;
@@ -594,11 +645,26 @@
       else if(g===2){ ctx.fillStyle=C.road; ctx.fillRect(px,py,TILE,TILE);
         ctx.fillStyle=C.rock; ctx.fillRect(px+3,py+3,TILE-6,TILE-6); ctx.fillStyle=C.rock2; ctx.fillRect(px+3,py+TILE-8,TILE-6,5); }
       else { ctx.fillStyle=C.road; ctx.fillRect(px,py,TILE,TILE);
-        ctx.fillStyle='rgba(255,255,255,.04)'; ctx.fillRect(px+TILE/2-1,py+TILE/2-1,2,2); }
+        ctx.fillStyle='rgba(255,255,255,.04)'; ctx.fillRect(px+TILE/2-1,py+TILE/2-1,2,2);
+        // タイヤ痕。塗りつぶさず、通った向きに沿った2本の線で残す
+        const pv=paint[y*COLS+x];
+        if(pv){ ctx.fillStyle=C.tire;
+          if(pv&1){ ctx.fillRect(px,py+7,TILE,2); ctx.fillRect(px,py+15,TILE,2); }
+          if(pv&2){ ctx.fillRect(px+7,py,2,TILE); ctx.fillRect(px+15,py,2,TILE); } } }
     }
     for(const s of smoke){ ctx.globalAlpha=Math.max(0,s.life/1.7)*.5; ctx.fillStyle=C.smoke;
       ctx.beginPath(); ctx.arc(s.x-cam.x,s.y-cam.y,s.r,0,7); ctx.fill(); }
     ctx.globalAlpha=1;
+    // 出口。11体そろうまでは出ない。市松模様で「ここがゴール」と分かるようにする
+    if(exitOpen){
+      const ex=exitCell[0]*TILE-cam.x, ey=exitCell[1]*TILE-cam.y;
+      if(ex>-TILE&&ey>-TILE&&ex<VW&&ey<VH){
+        const on=((t*4)|0)%2===0;
+        ctx.fillStyle=on?C.exit:'#fff';
+        for(let i=0;i<4;i++)for(let j=0;j<4;j++) if((i+j)%2===0)
+          ctx.fillRect(ex+i*6,ey+j*6,6,6);
+      }
+    }
     const placed=[]; for(const tg of targets){ if(!tg.got) drawChar(tg,placed); }
     for(const e of enemies) drawCar(e);
     // 無敵の間は点滅させる。点滅していること自体が「いまは当たらない」の合図
@@ -607,7 +673,10 @@
     ctx.fillStyle='rgba(21,15,26,.8)'; ctx.fillRect(0,0,VW,22);
     ctx.fillStyle=C.ink; ctx.font='bold 12px ui-monospace,monospace'; ctx.textAlign='left';
     ctx.fillText('CNP '+got+'/'+NTARGET, 8,15);
-    ctx.textAlign='center'; ctx.fillText('SCORE '+score, VW/2,15);
+    ctx.textAlign='center';
+    ctx.fillText(exitOpen ? 'GO TO EXIT!' : 'SCORE '+score, VW/2,15);
+    if(exitOpen){ ctx.font='bold 10px ui-monospace,monospace';
+      ctx.fillText('SCORE '+score, VW/2, 15+11); ctx.font='bold 12px ui-monospace,monospace'; }
     ctx.textAlign='right'; ctx.fillText('BEST '+best, VW-8,15);
     // fuel = 制限時間
     ctx.fillStyle='#120c18'; ctx.fillRect(8,VH-14,VW-112,10);
@@ -641,8 +710,12 @@
   function drawRadar(g, RW, RH, u){
     const sx=RW/COLS, sy=RH/ROWS;
     g.fillStyle=C.radarBg; g.fillRect(0,0,RW,RH);
-    for(let y=0;y<ROWS;y++)for(let x=0;x<COLS;x++) if(grid[y][x]===1){
-      g.fillStyle='#4a2d4a'; g.fillRect(x*sx,y*sy,Math.ceil(sx),Math.ceil(sy)); }
+    for(let y=0;y<ROWS;y++)for(let x=0;x<COLS;x++){
+      if(grid[y][x]===1){ g.fillStyle='#4a2d4a'; g.fillRect(x*sx,y*sy,Math.ceil(sx),Math.ceil(sy)); }
+      else if(paint && paint[y*COLS+x]){ g.fillStyle='#3b3346';   // 塗った所
+        g.fillRect(x*sx,y*sy,Math.ceil(sx),Math.ceil(sy)); } }
+    if(exitOpen && ((t*4)|0)%2===0){ g.fillStyle=C.exit;
+      g.fillRect(exitCell[0]*sx-1*u, exitCell[1]*sy-1*u, Math.ceil(sx)+2*u, Math.ceil(sy)+2*u); }
     // CNPは2x2の単色ドットだと11体の色が読めない。3x3＋白フチにし、
     // 11体とも同じ位相で点滅させる。位相をバラすとチカチカして逆に読めない
     if((t % 0.5) < 0.32) for(const tg of targets){ if(tg.got) continue;
@@ -688,8 +761,12 @@
     invul=INVUL;
   }
 
-  function win(){ state='over'; finish('CLEAR!', 'CNP 11/11 &nbsp; SCORE '+score+' &nbsp; 残燃料 '+Math.round(fuel)); }
-  function lose(r){ state='over'; finish('GAME OVER', r+' &nbsp;/&nbsp; SCORE '+score+' (CNP '+got+'/'+NTARGET+')'); }
+  function win(){ state='over';
+    finish('CLEAR!', 'SCORE '+score+' &nbsp;/&nbsp; 踏破 '+painted+'マス ('+
+      Math.round(painted/openCells().length*100)+'%) &nbsp;/&nbsp; 残燃料 '+Math.round(fuel)); }
+  function lose(r){ state='over';
+    finish('GAME OVER', r+' &nbsp;/&nbsp; SCORE '+score+' (CNP '+got+'/'+NTARGET+
+      ' &nbsp;踏破 '+painted+'マス)'); }
   function finish(title,sub){
     if(score>best){ best=score; localStorage.setItem('nounrally_best',best); }
     beep(150,.28,'sawtooth',.06);
@@ -794,6 +871,8 @@
   grid=genMaze(); player=mkCar(1.5*TILE,1.5*TILE,C.player,false);
   enemies=[]; targets=[]; smoke=[]; cam={x:0,y:0}; fuel=100; score=0; got=0; t=0;
   lives=LIVES_START; invul=0; dryT=0;
+  paint=new Uint8Array(COLS*ROWS); painted=0;
+  exitCell=farthestCell(grid); exitOpen=false;
   render(); renderRadar();
 })();
 </script>
