@@ -39,12 +39,18 @@
   #stage{position:relative;width:100%;aspect-ratio:8/5;background:#000;
     border:3px solid var(--wall);border-radius:8px;box-shadow:5px 5px 0 var(--wall2);overflow:hidden;}
   canvas{display:block;width:100%;height:100%;image-rendering:pixelated;}
+  /* ステージは overflow:hidden なので、中身が背より高くなると上下が切り落とされる。
+     いちばん下にある START / RETRY ボタンが真っ先に消えて「押せない」になる。
+     縮んでよいのは説明文だけ。見出しとボタンは flex:0 0 auto で死守し、
+     説明文に min-height:0 + overflow-y:auto を与えて、そこだけ縮ませる。
+     min-height:0 が無いと flex アイテムは中身より小さくならず、縮まない */
   #ov{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
-    gap:8px;background:rgba(21,15,26,.9);text-align:center;padding:16px;}
+    gap:8px;background:rgba(21,15,26,.9);text-align:center;padding:16px;overflow:hidden;}
   #ov.hidden{display:none;}
-  #ov h2{font-size:clamp(18px,5vw,30px);letter-spacing:.06em;}
-  #ov p{font-size:13px;opacity:.85;line-height:1.65;}
-  #btn{margin-top:4px;font:inherit;font-weight:800;letter-spacing:.1em;padding:9px 20px;
+  #ov h2{flex:0 0 auto;font-size:clamp(18px,5vw,30px);letter-spacing:.06em;}
+  #ov p{flex:0 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;
+    font-size:clamp(11px,2.8vh,13px);opacity:.85;line-height:1.6;}
+  #btn{flex:0 0 auto;margin-top:4px;font:inherit;font-weight:800;letter-spacing:.1em;padding:9px 20px;
     background:var(--ink);color:var(--bg);border:none;border-radius:7px;box-shadow:3px 3px 0 var(--pink);}
   #btn:active{transform:translate(2px,2px);box-shadow:1px 1px 0 var(--pink);}
 
@@ -150,7 +156,7 @@
       <canvas id="c" width="614" height="384"></canvas>
       <div id="ov">
         <h2 id="ovt">NOUN RALLY</h2>
-        <p id="ovp">CNP11体をぜんぶ回収し、出口へ戻れ。<br>通った跡は得点になる ― 走った距離がそのままスコア。<br>車は止まらない ― 曲がる方向だけ決める。<br>壁に当たると自動で右へ曲がる ― 行き止まりだけ跳ね返る。<br>赤い車に触れるとクラッシュ。<br>SMOKE で敵はスピンするが、燃料を多く食う。<br>燃料が尽きると減速し、8秒で力尽きる。<br>車は3台。ぶつけても続きから走れる。<br><br>スマホ: 画面を押したまま倒して曲がる<br>PC: 矢印/WASD で曲がる ・ Space で煙 ・ M で音</p>
+        <p id="ovp">CNP11体を集めて、出口へ戻れ。通った跡が得点。<br>車は止まらない ― 曲がる方向だけ決める。<br>壁に当たると自動で右へ。行き止まりだけ跳ね返る。<br>赤い車に触れるとクラッシュ。車は3台。<br>SMOKE で敵はスピン。ただし燃料を多く食う。<br>燃料が尽きると減速し、8秒で力尽きる。<br><br>スマホ: 画面を押したまま倒す<br>PC: 矢印/WASD ・ Space=煙 ・ M=音</p>
         <button id="btn">START</button>
       </div>
     </div>
@@ -999,7 +1005,7 @@
     if(score>best){ best=score; localStorage.setItem('nounrally_best',best); }
     beep(150,.28,'sawtooth',.06);
     ovt.textContent=title;
-    ovp.innerHTML=sub+'<br><br>車は止まらない。曲がる方向だけ決める。<br>壁に当たると自動で右へ曲がる。行き止まりは跳ね返る。<br>燃料が尽きると減速し、8秒で力尽きる。<br>SMOKE は燃料を多く食う ― 使いどころ注意。';
+    ovp.innerHTML=sub+'<br><br>車は止まらない。曲がる方向だけ決める。<br>壁に当たると自動で右へ。行き止まりは跳ね返る。<br>SMOKE は燃料を多く食う ― 使いどころ注意。';
     btn.textContent='RETRY'; ov.classList.remove('hidden');
   }
 
