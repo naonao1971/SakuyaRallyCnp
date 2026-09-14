@@ -40,6 +40,46 @@ CNP11体を集める Rally-X 系の迷路ゲーム。車は止まらず、曲が
 以前は全クリアすると誰でも必ず 2420 点で同着だった。ベストスコアは
 `localStorage` に残る。
 
+## `localStorage` を素のまま呼ばないこと（STARTが効かなくなる）
+
+**`localStorage` は「あるのに触ると落ちる」ことがある。** 別オリジンの iframe で
+動かしたとき（アーティファクト等）、iOS Safari の「サイト越えトラッキングを防ぐ」
+（既定でオン）が効いていると、**`getItem` を呼んだ瞬間に `SecurityError`** が飛ぶ。
+
+初期化の途中でこれを踏むとスクリプトがその行で死に、**以降の
+`addEventListener` が1つも走らない**。HTML と CSS は生きているので画面は
+いつも通りに見え、**STARTを押しても何も起きない板**になる。原因がどこにも
+出ないので、見つけるのに時間がかかる。実際に踏んだ。
+
+必ずこのラッパー越しに使うこと。
+
+```js
+const store = {
+  get(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } },
+  set(k,v){ try{ localStorage.setItem(k,v); }catch(e){} },
+};
+```
+
+再現の仕方（Playwright）:
+
+```js
+await ctx.addInitScript(()=>{
+  Object.defineProperty(window,'localStorage',{configurable:true,
+    get(){ throw new DOMException('The operation is insecure.','SecurityError'); }});
+});
+```
+
+`sessionStorage` / `indexedDB` も同じ。**ブラウザの機能を初期化の本流で
+素のまま呼ばないこと。**
+
+## 初期化で落ちたら画面に出すこと
+
+上の件は「黙って死ぬ」のが一番たちが悪かった。本体より**前**に
+`error` / `unhandledrejection` を拾う小さなスクリプトを置き、
+`#crash` の帯にメッセージを出している。押すと消える。
+
+本体より前に登録すること ― 本体の中で登録しても、本体が死ぬ側なので間に合わない。
+
 ## 出口はスタート地点に置かないこと
 
 11体そろえたあと**わざとクラッシュすれば復活位置＝出口**になり、残機1つで

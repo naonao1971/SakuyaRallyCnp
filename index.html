@@ -48,6 +48,11 @@
     background:var(--ink);color:var(--bg);border:none;border-radius:7px;box-shadow:3px 3px 0 var(--pink);}
   #btn:active{transform:translate(2px,2px);box-shadow:1px 1px 0 var(--pink);}
 
+  /* 初期化で落ちたときだけ出る帯。押すと消える */
+  #crash{position:fixed;left:0;right:0;top:0;z-index:99;
+    background:#7d1f1f;color:#ffe9e9;font-size:11px;line-height:1.5;
+    padding:6px 10px;word-break:break-all;}
+
   /* バーチャルスティック。触れた場所に出る浮動式で、指を離すと消える。
      当たり判定は持たせない（pointer-events:none） */
   #joyring{position:fixed;z-index:30;pointer-events:none;display:none;
@@ -171,6 +176,7 @@
   </footer>
 </div>
 
+<div id="crash" hidden role="alert"></div>
 <div id="joyring" aria-hidden="true"></div>
 <div id="joyknob" aria-hidden="true"></div>
 
@@ -187,6 +193,21 @@
   <p class="turn">横向きにしてください</p>
   <p class="note">本作は CryptoNinja / CryptoNinja Partners の非公式ファンアートです</p>
 </div>
+<script>
+// 本体より先に登録すること。初期化の途中で例外が出ると、以降の
+// addEventListener が1つも走らず「STARTを押しても何も起きない」板になる。
+// 黙って死ぬと原因が分からないので、必ず画面に出す
+addEventListener('error', function(e){
+  var d=document.getElementById('crash'); if(!d) return;
+  d.textContent='ERROR: '+((e.error&&e.error.message)||e.message||e)+' @'+(e.lineno||'?');
+  d.hidden=false;
+});
+addEventListener('unhandledrejection', function(e){
+  var d=document.getElementById('crash'); if(!d) return;
+  d.textContent='ERROR: '+((e.reason&&e.reason.message)||e.reason);
+  d.hidden=false;
+});
+</script>
 <script>
 (() => {
   const cv=document.getElementById('c'), ctx=cv.getContext('2d');
@@ -284,7 +305,16 @@
   let rosterFlash;        // ロスターの枠が光る残り秒数。targets と同じ並び
   let exitCell, exitOpen; // 出口。11体そろうまで開かない
   let dryT;           // 燃料が尽きてからの経過秒。DRY_TIME で力尽きる
-  best = +(localStorage.getItem('nounrally_best')||0);
+  // localStorage は「あるのに触ると落ちる」ことがある。別オリジンの iframe で
+  // 動かしたとき（アーティファクト等）、iOS Safari の「サイト越えトラッキングを
+  // 防ぐ」が有効だと、getItem を呼んだ時点で SecurityError が飛ぶ。
+  // 素のまま呼ぶとスクリプトがこの行で死に、以降の addEventListener が
+  // 1つも走らない ＝ STARTを押しても何も起きない、になる（実際に踏んだ）
+  const store = {
+    get(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } },
+    set(k,v){ try{ localStorage.setItem(k,v); }catch(e){} },
+  };
+  best = +(store.get('nounrally_best')||0);
 
   function genMaze(){
     const g = Array.from({length:ROWS},()=>Array(COLS).fill(1));
@@ -622,7 +652,7 @@
   // iOS Safari は AudioContext を suspended で作る。ユーザー操作の中で resume()
   // しないと鳴らないので、最初のタップ/クリック/キー入力で必ず解除する
   let actx, master, muted=false;
-  try{ muted = localStorage.getItem('nounrally_mute')==='1'; }catch(e){}
+  muted = store.get('nounrally_mute')==='1';
 
   function audio(){
     if(!actx){
@@ -717,7 +747,7 @@
     muteBtn.textContent = muted?'🔇':'🔊';
     muteBtn.setAttribute('aria-label', muted?'音を出す':'音を消す');
     muteBtn.classList.toggle('off', muted);
-    try{ localStorage.setItem('nounrally_mute', muted?'1':'0'); }catch(e){}
+    store.set('nounrally_mute', muted?'1':'0');
   }
   muteBtn.addEventListener('click',e=>{ e.stopPropagation(); muted=!muted; audio(); applyMute(); });
   applyMute();
@@ -996,7 +1026,7 @@
     finish('GAME OVER', r+' &nbsp;/&nbsp; SCORE '+score+' (CNP '+got+'/'+NTARGET+
       ' &nbsp;踏破 '+painted+'マス)'); }
   function finish(title,sub){
-    if(score>best){ best=score; localStorage.setItem('nounrally_best',best); }
+    if(score>best){ best=score; store.set('nounrally_best',best); }
     beep(150,.28,'sawtooth',.06);
     ovt.textContent=title;
     ovp.innerHTML=sub+'<br><br>車は止まらない。曲がる方向だけ決める。<br>壁に当たると自動で右へ曲がる。行き止まりは跳ね返る。<br>燃料が尽きると減速し、8秒で力尽きる。<br>SMOKE は燃料を多く食う ― 使いどころ注意。';
@@ -1029,6 +1059,7 @@
     // 押し足した後で古い方を離しても、新しい向きは保持したままにする
     if(e.code===heldCode){ heldCode=null; heldDir=null; }
   });
+  document.getElementById('crash').addEventListener('click',e=>{ e.currentTarget.hidden=true; });
   const smk=document.getElementById('smk');
   smk.addEventListener('pointerdown',e=>{e.preventDefault();emitting=true;});
   smk.addEventListener('pointerup',()=>emitting=false);
