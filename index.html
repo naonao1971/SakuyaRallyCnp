@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>NOUN RALLY ⌐◨-◨ (proto v4)</title>
+<title>咲耶Nounラリー ⌐◨-◨ (proto v4)</title>
 <!-- アイコンを明示しないとブラウザが /favicon.ico を自動で取りに行き、404になる。
      apple-touch-iconは「ホーム画面に追加」でiOSが使う。
      どちらも咲耶スクランブルと同じものを流用している -->
@@ -29,6 +29,8 @@
   #wrap{width:min(96vw,560px);}
   h1{font-size:clamp(15px,4vw,22px);letter-spacing:.14em;text-align:center;margin-bottom:6px;font-weight:800;}
   h1 .g{color:var(--pink);}
+  h1 .en{opacity:.55;font-size:.62em;letter-spacing:.18em;}
+  h1 .ver{opacity:.4;font-size:.62em;}
 
   /* 既定は縦積み・幅基準。PCと縦持ちはこれで足りる。
      DOM順は横並び(パッドが左)を優先しているので、縦積みでは order で並べ替える */
@@ -48,6 +50,10 @@
     gap:8px;background:rgba(21,15,26,.9);text-align:center;padding:16px;overflow:hidden;}
   #ov.hidden{display:none;}
   #ov h2{flex:0 0 auto;font-size:clamp(18px,5vw,30px);letter-spacing:.06em;}
+  /* 英語表記。リザルト(CLEAR!/GAME OVER)では邪魔なので、そのとき隠す */
+  #ovsub{flex:0 0 auto;margin-top:-2px;font-size:clamp(9px,2.2vh,11px);
+    letter-spacing:.24em;opacity:.5;}
+  #ovsub.hidden{display:none;}
   #ov p{flex:0 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;
     font-size:clamp(11px,2.8vh,13px);opacity:.85;line-height:1.6;}
   #btn{flex:0 0 auto;margin-top:4px;font:inherit;font-weight:800;letter-spacing:.1em;padding:9px 20px;
@@ -140,6 +146,7 @@
   #rotate img{width:min(100%,420px);border-radius:8px;border:2px solid rgba(232,197,106,.45);}
   #rotate h2{font-size:clamp(17px,5.2vw,24px);letter-spacing:.08em;}
   #rotate h2 .g{color:var(--pink);}
+  #rotate .en{font-size:11px;letter-spacing:.24em;opacity:.5;margin-top:-4px;}
   /* 和文は 1ch が欧文の倍近い幅になるので ch 指定だと極端に狭くなる。
      px で指定して、端末幅いっぱいまで使えるようにする */
   #rotate .how{font-size:12.5px;line-height:1.8;opacity:.85;max-width:min(100%,380px);}
@@ -150,12 +157,14 @@
 </head>
 <body>
 <div id="wrap">
-  <h1>NOUN RALLY <span class="g">&#x2310;&#x25E8;-&#x25E8;</span> <span style="opacity:.4;font-size:.7em">proto v4</span></h1>
+  <h1>咲耶<span class="g">Noun</span>ラリー <span class="g">&#x2310;&#x25E8;-&#x25E8;</span>
+    <span class="en">SakuyaNounRally</span> <span class="ver">proto v4</span></h1>
   <div id="play">
     <div id="stage">
       <canvas id="c" width="614" height="384"></canvas>
       <div id="ov">
-        <h2 id="ovt">NOUN RALLY</h2>
+        <h2 id="ovt">咲耶Nounラリー</h2>
+        <div id="ovsub">SakuyaNounRally</div>
         <p id="ovp">CNP11体を集めて、出口へ戻れ。通った跡が得点。<br>車は止まらない ― 曲がる方向だけ決める。<br>壁に当たると自動で右へ。行き止まりだけ跳ね返る。<br>赤い車に触れるとクラッシュ。車は3台。<br>SMOKE で敵はスピン。ただし燃料を多く食う。<br>燃料が尽きると減速し、8秒で力尽きる。<br><br>スマホ: 画面を押したまま倒す<br>PC: 矢印/WASD ・ Space=煙 ・ M=音</p>
         <button id="btn">START</button>
       </div>
@@ -183,7 +192,8 @@
 <!-- 縦持ちの画面。タイトルと遊び方を見せ、遊ぶには横向きへ促す -->
 <div id="rotate" role="alert" aria-live="assertive">
   <img src="assets/rally_title.jpg" alt="ラリーカーを運転する咲耶とノグルズのナビゲーター">
-  <h2>NOUN RALLY <span class="g">&#x2310;&#x25E8;-&#x25E8;</span></h2>
+  <h2>咲耶<span class="g">Noun</span>ラリー <span class="g">&#x2310;&#x25E8;-&#x25E8;</span></h2>
+  <p class="en">SakuyaNounRally</p>
   <p class="how">迷路に散らばった CNP 11体を全部回収し、出口へ戻れ。<br>
     通った跡は得点になる。<br>
     車は止まらない ― 決められるのは曲がる方向だけ。<br>
@@ -198,6 +208,7 @@
   const cv=document.getElementById('c'), ctx=cv.getContext('2d');
   const VW=cv.width, VH=cv.height;
   const ov=document.getElementById('ov'), ovt=document.getElementById('ovt'), ovp=document.getElementById('ovp'), btn=document.getElementById('btn');
+  const ovsub=document.getElementById('ovsub');
   // 縦持ちではゲームを止め、タイトルと遊び方の画面を出す。
   // 判定をイベント任せにしないこと。iOS Safari の orientationchange はビューポート
   // (=メディアクエリ)の更新より先に発火することがあり、その時点の古い値で固定すると
@@ -1080,6 +1091,7 @@
     if(score>best){ best=score; localStorage.setItem('nounrally_best',best); }
     beep(150,.28,'sawtooth',.06);
     ovt.textContent=title;
+    ovsub.classList.add('hidden');   // タイトルの英語表記はスタート画面だけ
     ovp.innerHTML=sub+'<br><br>車は止まらない。曲がる方向だけ決める。<br>壁に当たると自動で右へ。行き止まりは跳ね返る。<br>SMOKE は燃料を多く食う ― 使いどころ注意。';
     btn.textContent='RETRY'; ov.classList.remove('hidden');
   }

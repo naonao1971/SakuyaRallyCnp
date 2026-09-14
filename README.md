@@ -1,4 +1,8 @@
-# 咲耶ラリーCNP — NOUN RALLY ⌐◨-◨ (proto)
+# 咲耶Nounラリー — SakuyaNounRally ⌐◨-◨ (proto)
+
+旧称は「咲耶ラリーCNP / NOUN RALLY」。`localStorage` のキー
+（`nounrally_best` / `nounrally_mute`）は**変えていない**。変えると
+プレイヤーのベストスコアと音設定が黙って消えるため、表記だけを改めている。
 
 CNP11体を集める Rally-X 系の迷路ゲーム。車は止まらず、曲がる方向だけを決めて
 迷路を走り回り、散らばった11体を全部回収するとクリア。
