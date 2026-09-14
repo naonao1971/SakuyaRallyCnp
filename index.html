@@ -55,7 +55,7 @@
     border:2px solid rgba(242,233,239,.30);background:rgba(21,15,26,.30);}
   #joyknob{position:fixed;z-index:31;pointer-events:none;display:none;
     width:30px;height:30px;margin:-15px 0 0 -15px;border-radius:50%;
-    background:var(--pink);opacity:.85;box-shadow:0 0 0 2px rgba(242,233,239,.35);}
+    background:var(--car,var(--pink));opacity:.85;box-shadow:0 0 0 2px rgba(242,233,239,.35);}
   #joyring.on,#joyknob.on{display:block;}
   #side{display:flex;flex-direction:column;align-items:center;gap:8px;}
   /* レーダーをコース外へ出す。立ち絵(4:3)と迷路(33:25=1.32)はほぼ同比率なので、
@@ -264,6 +264,7 @@
 
   let grid, player, enemies, targets, smoke, cam, state, score, got, fuel, emitting, t, best;
   let lives, invul;   // 残機と、復活後の無敵の残り秒数
+  let carName;        // いま走っているドライバー名を出す残り秒数つきの表示
   // タイヤ痕。1マスにつき bit1=横に通った / bit2=縦に通った。
   // 方向を持つのは、痕を進行方向に沿った2本の線で描くため
   let paint, painted;     // painted は塗ったマス数（得点と踏破率に使う）
@@ -371,7 +372,19 @@
   const PAINT_PTS  = 5;        // タイヤ痕を1マス残すごとの得点
   const GOAL_BONUS = 800;      // 11体そろえて出口へ戻ったときのボーナス
 
-  const LIVES_START = 3;       // 車は3台
+  // 3台はただの予備ではなく、それぞれ別のドライバーの車。色で区別する。
+  // 色は路面(#2a2233)と壁(#5f3a5f)の両方に対して コントラスト比 3.0 以上を
+  // 満たすものを選んである（紫を暗くすると壁に沈む）。
+  //   咲耶      #ff2d9b  路面4.4 / 壁2.7
+  //   シャオラン #ffe14a  路面11.7 / 壁7.1
+  //   ネム      #c9a3ff  路面7.4 / 壁4.5
+  // 個性はいまは色だけ。性能差（速度・燃費・煙の効き）は今後の拡張余地
+  const CARS = [
+    { n:'咲耶',      c:'#ff2d9b' },
+    { n:'シャオラン', c:'#ffe14a' },
+    { n:'ネム',      c:'#c9a3ff' },
+  ];
+  const LIVES_START = CARS.length;   // 車は3台
   const INVUL = 2.0;           // 復活後の無敵(秒)
   let heldDir=null, heldCode=null;   // いま押されている方向キー
 
@@ -394,6 +407,9 @@
       const e=mkCar((x+.5)*TILE,(y+.5)*TILE,C.enemy,true); e.dir={x:-1,y:0}; e.want={x:-1,y:0}; enemies.push(e); }
   }
 
+  // いま走っている車。1台失うごとに次のドライバーへ変わる
+  const carIndex = ()=> clamp(LIVES_START-lives, 0, CARS.length-1);
+
   // 自機をスタート地点へ戻す。走り出す向きは開いている方向から選ぶ
   function placePlayer(){
     player.x=1.5*TILE; player.y=1.5*TILE; player.spin=0;
@@ -401,6 +417,12 @@
     heldDir=null; heldCode=null;
     const pdir=[{x:1,y:0},{x:0,y:1},{x:-1,y:0},{x:0,y:-1}].find(d=>!isWall(1+d.x,1+d.y)) || {x:1,y:0};
     player.dir={...pdir}; player.ang=Math.atan2(pdir.y,pdir.x);
+    // 車を乗り換える。スティックのつまみも同じ色にして、いま誰で走っているかを
+    // 操作中の指先でも分かるようにする
+    const car=CARS[carIndex()];
+    player.color=car.c;
+    document.documentElement.style.setProperty('--car', car.c);
+    carName=2.0;
     syncCam();
   }
 
@@ -413,7 +435,7 @@
     const pool=cells.filter(([x,y])=>!(x<5&&y<5)).sort(()=>Math.random()-.5);
     for(let i=0;i<NTARGET;i++){ const [x,y]=pool[i]; targets.push({x:(x+.5)*TILE,y:(y+.5)*TILE,got:false,ch:CNP[i]}); }
     smoke=[]; cam={x:0,y:0}; score=0; got=0; fuel=100; emitting=false; t=0;
-    lives=LIVES_START; invul=0; dryT=0;
+    lives=LIVES_START; invul=0; dryT=0; carName=0;
     paint=new Uint8Array(COLS*ROWS); painted=0;
     rosterFlash=new Float32Array(NTARGET);
     exitCell=farthestCell(grid); exitOpen=false;
@@ -503,6 +525,7 @@
     const k = dt*60;
     if(invul>0) invul-=dt;
     for(let i=0;i<rosterFlash.length;i++) if(rosterFlash[i]>0) rosterFlash[i]-=dt;
+    if(carName>0) carName-=dt;
     // 燃料切れは即死ではなく減速。そこから DRY_TIME 秒かけて止まり、
     // 止まった時点で終わる。stepCar より前に効かせる必要がある
     // （atCenter のしきい値が c.speed*k なので、速度と同じ値でないと壁を抜ける）
@@ -701,8 +724,10 @@
     if(exitOpen){
       const ex=exitCell[0]*TILE-cam.x, ey=exitCell[1]*TILE-cam.y;
       if(ex>-TILE&&ey>-TILE&&ex<VW&&ey<VH){
+        // 市松旗。黄色は シャオランカー に使うので、旗は白と黒に戻した
         const on=((t*4)|0)%2===0;
-        ctx.fillStyle=on?C.exit:'#fff';
+        ctx.fillStyle='#f2e9ef'; ctx.fillRect(ex,ey,TILE,TILE);
+        ctx.fillStyle=on?'#150f1a':'#3d243d';
         for(let i=0;i<4;i++)for(let j=0;j<4;j++) if((i+j)%2===0)
           ctx.fillRect(ex+i*6,ey+j*6,6,6);
       }
@@ -736,17 +761,28 @@
       ctx.fillRect(8,VH-14,(VW-112)*left,10);
     }
     drawRoster();
+    // 乗り換え直後だけドライバー名を出す。無敵の点滅と合わせて
+    // 「いま別の車に替わった」ことを伝える
+    if(carName>0){
+      const car=CARS[carIndex()];
+      ctx.globalAlpha=Math.min(1,carName);
+      ctx.font='bold 15px ui-monospace,monospace'; ctx.textAlign='center';
+      ctx.fillStyle=car.c; ctx.fillText(car.n+' CAR', VW/2, HUD_H+34);
+      ctx.globalAlpha=1;
+    }
     ctx.fillStyle=C.ink; ctx.font='bold 8px ui-monospace,monospace'; ctx.textAlign='left'; ctx.fillText('FUEL',8,VH-16);
     // 燃料が尽きたら「減速した」ことを伝える。黙って遅くすると故障に見える
     if(fuel<=0 && ((t*3)|0)%2===0){
       ctx.fillStyle=C.enemy; ctx.font='bold 9px ui-monospace,monospace';
       ctx.fillText('OUT OF FUEL - '+Math.ceil(DRY_TIME-dryT), 36, VH-16);
     }
-    // 残りの車。いま走っている1台は数えない（アーケードの流儀）
+    // 残りの車。いま走っている1台は数えない（アーケードの流儀）。
+    // 屋根の色はそのドライバーの色なので、次に誰が出てくるかが分かる
     for(let i=0;i<Math.max(0,lives-1);i++){
+      const car=CARS[Math.min(carIndex()+1+i, CARS.length-1)];
       const bx=VW-14-i*15, by=VH-9;
-      ctx.fillStyle=C.wall2;  ctx.fillRect(bx-10,by-5,11,10);   // 車体。背景と同色だと潰れる
-      ctx.fillStyle=C.player; ctx.fillRect(bx-10,by-5,11,3);    // 屋根はピンク＝自機の徴
+      ctx.fillStyle=C.wall2; ctx.fillRect(bx-10,by-5,11,10);
+      ctx.fillStyle=car.c;   ctx.fillRect(bx-10,by-5,11,3);
     }
 
   }
@@ -761,7 +797,7 @@
       if(grid[y][x]===1){ g.fillStyle='#4a2d4a'; g.fillRect(x*sx,y*sy,Math.ceil(sx),Math.ceil(sy)); }
       else if(paint && paint[y*COLS+x]){ g.fillStyle='#3b3346';   // 塗った所
         g.fillRect(x*sx,y*sy,Math.ceil(sx),Math.ceil(sy)); } }
-    if(exitOpen && ((t*4)|0)%2===0){ g.fillStyle=C.exit;
+    if(exitOpen && ((t*4)|0)%2===0){ g.fillStyle='#f2e9ef';
       g.fillRect(exitCell[0]*sx-1*u, exitCell[1]*sy-1*u, Math.ceil(sx)+2*u, Math.ceil(sy)+2*u); }
     // CNPは2x2の単色ドットだと11体の色が読めない。3x3＋白フチにし、
     // 11体とも同じ位相で点滅させる。位相をバラすとチカチカして逆に読めない
@@ -953,7 +989,7 @@
   // idle preview
   grid=genMaze(); player=mkCar(1.5*TILE,1.5*TILE,C.player,false);
   enemies=[]; targets=[]; smoke=[]; cam={x:0,y:0}; fuel=100; score=0; got=0; t=0;
-  lives=LIVES_START; invul=0; dryT=0;
+  lives=LIVES_START; invul=0; dryT=0; carName=0;
   paint=new Uint8Array(COLS*ROWS); painted=0;
   rosterFlash=new Float32Array(NTARGET);
   exitCell=farthestCell(grid); exitOpen=false;
