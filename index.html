@@ -46,9 +46,23 @@
      縮んでよいのは説明文だけ。見出しとボタンは flex:0 0 auto で死守し、
      説明文に min-height:0 + overflow-y:auto を与えて、そこだけ縮ませる。
      min-height:0 が無いと flex アイテムは中身より小さくならず、縮まない */
-  #ov{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  #ov{position:absolute;inset:0;z-index:8;display:flex;flex-direction:column;align-items:center;justify-content:center;
     gap:8px;background:rgba(21,15,26,.9);text-align:center;padding:16px;overflow:hidden;}
   #ov.hidden{display:none;}
+  /* ポーズ。コースの中央に置く。プレイ中はほぼ透明で邪魔をせず、止めている間だけ
+     はっきり出す。canvas の上 44px は HUD 帯なので、帯を除いた「走る場所」の
+     中心へ寄せてある(44/384 = 11.5% の半分だけ下げて 55.7%)。
+     プレイ中は pointer-events:none。ここを押せるようにすると、画面のどこでも
+     触れて出るスティックの真ん中に死角ができ、中央では曲がれなくなる。
+     プレイ中のポーズは「中央で、動かさずに離したとき」だけ canvas 側で拾う */
+  #pause{position:absolute;left:50%;top:55.7%;transform:translate(-50%,-50%);z-index:6;
+    display:none;width:52px;height:52px;border-radius:50%;
+    border:2px solid rgba(242,233,239,.55);background:rgba(21,15,26,.55);
+    color:var(--ink);font:inherit;font-size:20px;line-height:1;
+    opacity:.13;transition:opacity .15s ease;pointer-events:none;}
+  #pause.show{display:block;}
+  #pause.on{opacity:.96;pointer-events:auto;}
+  #pause.on:active{transform:translate(-50%,-50%) scale(.94);}
   #ov h2{flex:0 0 auto;font-size:clamp(18px,5vw,30px);letter-spacing:.06em;}
   /* 英語表記。リザルト(CLEAR!/GAME OVER)では邪魔なので、そのとき隠す */
   #ovsub{flex:0 0 auto;margin-top:-2px;font-size:clamp(9px,2.2vh,11px);
@@ -162,10 +176,11 @@
   <div id="play">
     <div id="stage">
       <canvas id="c" width="614" height="384"></canvas>
+      <button id="pause" type="button" aria-label="一時停止">&#x23F8;</button>
       <div id="ov">
         <h2 id="ovt">咲耶Nounラリー</h2>
         <div id="ovsub">SakuyaNounRally</div>
-        <p id="ovp">CNP11体を集めて、出口へ戻れ。通った跡が得点。<br>車は止まらない ― 曲がる方向だけ決める。<br>壁に当たると自動で右へ。行き止まりだけ跳ね返る。<br>赤い車に触れるとクラッシュ。車は3台。<br>SMOKE で敵はスピン。ただし燃料を多く食う。<br>燃料が尽きると減速し、8秒で力尽きる。<br><br>スマホ: 画面を押したまま倒す<br>PC: 矢印/WASD ・ Space=煙 ・ M=音</p>
+        <p id="ovp">CNP11体を集めて、出口へ戻れ。通った跡が得点。<br>車は止まらない ― 曲がる方向だけ決める。<br>壁に当たると自動で右へ。行き止まりだけ跳ね返る。<br>赤い車に触れるとクラッシュ。車は3台。<br>SMOKE で敵はスピン。ただし燃料を多く食う。<br>燃料が尽きると減速し、8秒で力尽きる。<br><br>スマホ: 画面を押したまま倒す<br>PC: 矢印/WASD ・ Space=煙 ・ M=音 ・ P=一時停止</p>
         <button id="btn">START</button>
       </div>
     </div>
@@ -508,6 +523,7 @@
     rosterFlash=new Float32Array(NTARGET);
     exitCell=farthestCell(grid); exitOpen=false;
     placePlayer();
+    resetPause(true);
     state='play'; ov.classList.add('hidden'); last=performance.now();
     cancelAnimationFrame(rafId); rafId=requestAnimationFrame(loop);
     bgmStart();
@@ -602,6 +618,32 @@
     e.wantFresh = true;
   }
 
+  // ポーズ。画面中央のボタンで止める / 再開する。PC は P と Esc でも。
+  const pauseBtn=document.getElementById('pause');
+  let paused=false;
+  function setPaused(p){
+    if(state!=='play' || paused===p) return;
+    paused=p;
+    pauseBtn.classList.toggle('on',p);
+    pauseBtn.innerHTML = p ? '&#x25B6;' : '&#x23F8;';
+    pauseBtn.setAttribute('aria-label', p?'再開':'一時停止');
+    if(p){
+      // 押したまま止めると、再開した瞬間その向きへ走り出す。入力は必ず捨てる
+      heldDir=null; heldCode=null; emitting=false;
+      joy=null; ring.classList.remove('on'); knob.classList.remove('on');
+      bgmStop();
+    }else{
+      // 止めていた間の時間が dt にまとめて乗らないよう、時計を今に合わせる
+      last=performance.now(); bgmStart();
+    }
+  }
+  function resetPause(show){
+    paused=false;
+    pauseBtn.classList.remove('on');
+    pauseBtn.innerHTML='&#x23F8;';
+    pauseBtn.setAttribute('aria-label','一時停止');
+    pauseBtn.classList.toggle('show',show);
+  }
   // rafId: 走っている requestAnimationFrame。newGame() を「プレイ中に」
   // 呼ぶと二本目のループが立ち上がり、update() が毎フレーム2回走る＝2倍速に
   // なる。いまは RETRY ボタンが隠れている間は押せないので実機では起きないが、
@@ -984,6 +1026,20 @@
       ctx.fillStyle=car.c;   ctx.fillRect(bx-10,by-5,11,3);
     }
 
+    // ポーズの幕。中央には再開ボタン(DOM)が重なるので、文字は上下へ逃がす。
+    // 点滅に t は使えない ― 止めている間 update が走らず t が進まないため
+    if(paused){
+      ctx.fillStyle='rgba(21,15,26,.74)'; ctx.fillRect(0,0,VW,VH);
+      const cy=HUD_H+VIEW_H/2;
+      ctx.textAlign='center';
+      ctx.fillStyle=C.ink; ctx.font='bold 22px ui-monospace,monospace';
+      ctx.fillText('PAUSED', VW/2, cy-46);
+      if(((performance.now()/500)|0)%2===0){
+        ctx.font='11px ui-monospace,monospace'; ctx.fillStyle='rgba(242,233,239,.8)';
+        ctx.fillText('中央のボタンで再開', VW/2, cy+52);
+      }
+      ctx.textAlign='left';
+    }
   }
 
   // レーダーはコース画面の外(右列)に描く。画面内に重ねていたときは
@@ -1065,7 +1121,7 @@
     let dt=(now-last)/1000; last=now; if(dt>.05)dt=.05;
     // 縦持ちの間は進行を止める。last は毎回更新しているので、横に戻したときに
     // 溜まった時間がまとめて進むことはない
-    if(!orientationBlocked) update(dt);
+    if(!orientationBlocked && !paused) update(dt);
     if(state==='play'){ render(); renderRadar(); rafId=requestAnimationFrame(loop); }
   }
   // クラッシュ。CNP・スコア・迷路は引き継ぎ、自機と敵の配置だけやり直す。
@@ -1094,12 +1150,14 @@
     ovsub.classList.add('hidden');   // タイトルの英語表記はスタート画面だけ
     ovp.innerHTML=sub+'<br><br>車は止まらない。曲がる方向だけ決める。<br>壁に当たると自動で右へ。行き止まりは跳ね返る。<br>SMOKE は燃料を多く食う ― 使いどころ注意。';
     btn.textContent='RETRY'; ov.classList.remove('hidden');
+    resetPause(false);
   }
 
   const KEYDIR={ArrowUp:{x:0,y:-1},KeyW:{x:0,y:-1},ArrowDown:{x:0,y:1},KeyS:{x:0,y:1},
                 ArrowLeft:{x:-1,y:0},KeyA:{x:-1,y:0},ArrowRight:{x:1,y:0},KeyD:{x:1,y:0}};
   addEventListener('keydown',e=>{
     if(e.code==='KeyM'){ muted=!muted; audio(); applyMute(); return; }
+    if(e.code==='KeyP'||e.code==='Escape'){ e.preventDefault(); setPaused(!paused); return; }
     if(e.code==='Space'){ e.preventDefault(); emitting=true; return; }
     const d=KEYDIR[e.code];
     if(d){ e.preventDefault();
@@ -1153,10 +1211,18 @@
     knob.style.left=kx+'px'; knob.style.top=ky+'px';
     ring.classList.add('on'); knob.classList.add('on');
   }
+  // ポーズボタンの円の中か。ボタンはプレイ中 pointer-events:none なので、
+  // 指はここまで届く。中央でも普通にスティックが出せる
+  function overPause(e){
+    const r=pauseBtn.getBoundingClientRect();
+    if(!r.width) return false;
+    return Math.hypot(e.clientX-(r.x+r.width/2), e.clientY-(r.y+r.height/2)) <= r.width/2+6;
+  }
   cv.addEventListener('pointerdown',e=>{
-    if(state!=='play') return;
+    if(state!=='play' || paused) return;   // 止めている間はスティックを出さない
     e.preventDefault();
-    joy={id:e.pointerId, ox:e.clientX, oy:e.clientY, dir:null};
+    joy={id:e.pointerId, ox:e.clientX, oy:e.clientY, dir:null,
+         sx:e.clientX, sy:e.clientY, t0:performance.now(), onPause:overPause(e)};
     joyShow(joy.ox,joy.oy,joy.ox,joy.oy);
   });
   addEventListener('pointermove',e=>{
@@ -1182,12 +1248,20 @@
   });
   const joyEnd=e=>{
     if(joy && e.pointerId!==joy.id) return;
+    // 中央のボタンの上で、倒しもせず、短く離した＝タップ。これだけをポーズにする
+    const tap = !!joy && joy.onPause && !joy.dir
+      && Math.hypot(e.clientX-joy.sx, e.clientY-joy.sy) < JOY_DEAD
+      && performance.now()-joy.t0 < 500;
     joy=null; ring.classList.remove('on'); knob.classList.remove('on');
     if(heldCode==='joy'){ heldCode=null; heldDir=null; }
+    if(tap) setPaused(true);
   };
   addEventListener('pointerup',joyEnd);
   addEventListener('pointercancel',joyEnd);
   btn.addEventListener('click',e=>{ e.stopPropagation(); newGame(); });
+
+  // ポーズ。止めている間も描画は続ける(PAUSEDの幕を出すため)。update だけ止める
+  pauseBtn.addEventListener('click',e=>{ e.stopPropagation(); setPaused(false); });
 
   // idle preview
   grid=genMaze(); player=mkCar(1.5*TILE,1.5*TILE,C.player,false);
