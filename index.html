@@ -262,11 +262,11 @@
   // 画面上段のロスター。11枠 x 20px + 隙間3px = 250px で canvas 614px の中央に収まる。
   // 姉妹作(咲耶スクランブル)は canvas 960x540 に 36px 枠。こちらは canvas が
   // 小さいので同じ比率まで落とした
-  const ROSTER = { slot:20, gap:3, y:24, flash:0.75 };
+  const ROSTER = { slot:20, gap:3, y:24, flash:0.75 };   // flash は秒
   // ワープトンネル。抜けた直後の敵はしばらく遅い（本家パックマンの挙動）。
   // 減速は c.speed を書き換えて効かせる。stepCar は atCenter のしきい値にも
   // c.speed*k を使うので、ここを通さずに移動量だけ落とすと壁をすり抜ける
-  const TUNNEL_SLOW = 0.55, TUNNEL_TIME = 1.4;   // flash は秒
+  const TUNNEL_SLOW = 0.55, TUNNEL_TIME = 1.4;   // 減速率と、その持続秒数
   const HUD_H = ROSTER.y + ROSTER.slot;                  // HUD帯の高さ(44px)
   // 迷路を描く領域は HUD 帯の下だけ。帯を半透明にして上に重ねるだけでは、
   // 迷路や自機が帯の下に潜って読めなくなる（自機はスタート地点で y=36 に
