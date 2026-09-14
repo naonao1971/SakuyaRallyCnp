@@ -55,7 +55,7 @@
     border:2px solid rgba(242,233,239,.30);background:rgba(21,15,26,.30);}
   #joyknob{position:fixed;z-index:31;pointer-events:none;display:none;
     width:30px;height:30px;margin:-15px 0 0 -15px;border-radius:50%;
-    background:var(--pink);opacity:.85;box-shadow:0 0 0 2px rgba(242,233,239,.35);}
+    background:var(--car,var(--pink));opacity:.85;box-shadow:0 0 0 2px rgba(242,233,239,.35);}
   #joyring.on,#joyknob.on{display:block;}
   #side{display:flex;flex-direction:column;align-items:center;gap:8px;}
   /* レーダーをコース外へ出す。立ち絵(4:3)と迷路(33:25=1.32)はほぼ同比率なので、
@@ -67,6 +67,13 @@
     image-rendering:pixelated;}
   /* 運転席の窓。咲耶スクランブルのパイロット窓と同じく琥珀のヘアラインで囲う */
   #pilot{display:block;width:132px;max-width:100%;border:2px solid rgba(232,197,106,.5);border-radius:6px;}
+  /* ミュートは SMOKE と同じ行に置く。独立した行にすると右列の縦を食い、
+     iPhone 15 で空きが 37px → 10px まで減って実機で溢れる恐れがある */
+  #btnrow{display:flex;align-items:stretch;gap:6px;width:100%;}
+  #mute{font:inherit;font-size:15px;line-height:1;padding:4px 9px;border-radius:8px;
+    background:var(--road);border:2px solid var(--wall);color:var(--ink);flex:0 0 auto;}
+  #mute.off{opacity:.5;}
+  #mute:active{background:var(--wall2);}
   #smk{font:inherit;font-weight:800;font-size:14px;padding:12px 18px;border-radius:8px;
     background:#5a2130;border:2px solid var(--enemy);color:var(--ink);}
   #smk:active{background:#7d2c42;}
@@ -77,6 +84,7 @@
   /* PC: 十字パッドと煙ボタンは要らない(キーボード操作)。立ち絵はステージの横へ */
   @media(hover:hover) and (pointer:fine){
     #smk{display:none;}
+    #btnrow{justify-content:center;}
     /* 立ち絵をステージの横に置くぶん、枠を広げる。広げないとステージが縮む */
     #wrap{width:min(96vw,780px);}
     #play{flex-direction:row;align-items:flex-start;justify-content:center;gap:14px;}
@@ -103,7 +111,7 @@
       flex:1 1 auto;min-width:92px;max-width:172px;}
     /* 右列の幅いっぱいに広げる。立ち絵は基本が132px固定なので上書きが要る */
     #pilot{width:100%;}
-    #smk{width:100%;min-height:54px;font-size:15px;padding:12px 10px;}
+    #smk{flex:1 1 auto;min-height:54px;font-size:15px;padding:12px 10px;}
     /* 高さ基準にしつつ、横幅の残りでも頭打ちにする。
        140px は 右列の最小(92) + 隙間と余白(48) の見積もり */
     #stage{width:auto;box-shadow:3px 3px 0 var(--wall2);
@@ -142,14 +150,17 @@
       <canvas id="c" width="614" height="384"></canvas>
       <div id="ov">
         <h2 id="ovt">NOUN RALLY</h2>
-        <p id="ovp">CNP11体をぜんぶ回収し、出口へ戻れ。<br>通った跡は得点になる ― 走った距離がそのままスコア。<br>車は止まらない ― 曲がる方向だけ決める。<br>壁に当たると自動で右へ曲がる ― 行き止まりだけ跳ね返る。<br>赤い車に触れるとクラッシュ。<br>SMOKE で敵はスピンするが、燃料を多く食う。<br>燃料が尽きると減速し、8秒で力尽きる。<br>車は3台。ぶつけても続きから走れる。<br><br>スマホ: 画面を押したまま倒して曲がる<br>PC: 矢印/WASD で曲がる ・ Space で煙</p>
+        <p id="ovp">CNP11体をぜんぶ回収し、出口へ戻れ。<br>通った跡は得点になる ― 走った距離がそのままスコア。<br>車は止まらない ― 曲がる方向だけ決める。<br>壁に当たると自動で右へ曲がる ― 行き止まりだけ跳ね返る。<br>赤い車に触れるとクラッシュ。<br>SMOKE で敵はスピンするが、燃料を多く食う。<br>燃料が尽きると減速し、8秒で力尽きる。<br>車は3台。ぶつけても続きから走れる。<br><br>スマホ: 画面を押したまま倒して曲がる<br>PC: 矢印/WASD で曲がる ・ Space で煙 ・ M で音</p>
         <button id="btn">START</button>
       </div>
     </div>
     <div id="side">
       <img id="pilot" src="assets/rally_pilot.png" alt="ラリーカーを運転する咲耶と、地図を広げるノグルズのナビゲーター">
       <canvas id="radar" width="184" height="140" aria-hidden="true"></canvas>
-      <button id="smk" type="button">SMOKE</button>
+      <div id="btnrow">
+        <button id="mute" type="button" aria-label="音を消す">&#x1F50A;</button>
+        <button id="smk" type="button">SMOKE</button>
+      </div>
     </div>
   </div>
   <div id="hint">proto v4 ・ CNP11体は咲耶スクランブルと同じ正式アート＋正式名 ・ 自機は ⌐◨-◨ カー</div>
@@ -194,6 +205,8 @@
     if(should===orientationBlocked) return;
     orientationBlocked=should;
     rotateEl.classList.toggle('visible', should);
+    // 縦持ちの間は進行が止まるので、BGMも止める
+    if(should) bgmStop(); else if(state==='play') bgmStart();
   }
   if(typeof portraitMQ.addEventListener==='function') portraitMQ.addEventListener('change',updateOrientation);
   else if(typeof portraitMQ.addListener==='function') portraitMQ.addListener(updateOrientation);
@@ -251,6 +264,9 @@
   // 小さいので同じ比率まで落とした
   const ROSTER = { slot:20, gap:3, y:24, flash:0.75 };   // flash は秒
   const HUD_H = ROSTER.y + ROSTER.slot;                  // HUD帯の高さ(44px)
+  // 迷路を描く領域は HUD 帯の下だけ。帯を半透明にして上に重ねるだけでは、
+  // 迷路や自機が帯の下に潜って読めなくなる（自機はスタート地点で y=36 に
+  // 来るので、44px の帯の真下に隠れる）。描画領域そのものを下げること
   const CHAR_HIT=14;    // 回収の当たり判定。v2から据え置き
 
   // 咲耶カラーのピンクを基調にする。player のマゼンタと enemy の橙赤を離してあるのは、
@@ -261,6 +277,7 @@
 
   let grid, player, enemies, targets, smoke, cam, state, score, got, fuel, emitting, t, best;
   let lives, invul;   // 残機と、復活後の無敵の残り秒数
+  let carName;        // いま走っているドライバー名を出す残り秒数つきの表示
   // タイヤ痕。1マスにつき bit1=横に通った / bit2=縦に通った。
   // 方向を持つのは、痕を進行方向に沿った2本の線で描くため
   let paint, painted;     // painted は塗ったマス数（得点と踏破率に使う）
@@ -368,7 +385,19 @@
   const PAINT_PTS  = 5;        // タイヤ痕を1マス残すごとの得点
   const GOAL_BONUS = 800;      // 11体そろえて出口へ戻ったときのボーナス
 
-  const LIVES_START = 3;       // 車は3台
+  // 3台はただの予備ではなく、それぞれ別のドライバーの車。色で区別する。
+  // 色は路面(#2a2233)と壁(#5f3a5f)の両方に対して コントラスト比 3.0 以上を
+  // 満たすものを選んである（紫を暗くすると壁に沈む）。
+  //   咲耶      #ff2d9b  路面4.4 / 壁2.7
+  //   シャオラン #ffe14a  路面11.7 / 壁7.1
+  //   ネム      #c9a3ff  路面7.4 / 壁4.5
+  // 個性はいまは色だけ。性能差（速度・燃費・煙の効き）は今後の拡張余地
+  const CARS = [
+    { n:'咲耶',      c:'#ff2d9b' },
+    { n:'シャオラン', c:'#ffe14a' },
+    { n:'ネム',      c:'#c9a3ff' },
+  ];
+  const LIVES_START = CARS.length;   // 車は3台
   const INVUL = 2.0;           // 復活後の無敵(秒)
   let heldDir=null, heldCode=null;   // いま押されている方向キー
 
@@ -391,6 +420,9 @@
       const e=mkCar((x+.5)*TILE,(y+.5)*TILE,C.enemy,true); e.dir={x:-1,y:0}; e.want={x:-1,y:0}; enemies.push(e); }
   }
 
+  // いま走っている車。1台失うごとに次のドライバーへ変わる
+  const carIndex = ()=> clamp(LIVES_START-lives, 0, CARS.length-1);
+
   // 自機をスタート地点へ戻す。走り出す向きは開いている方向から選ぶ
   function placePlayer(){
     player.x=1.5*TILE; player.y=1.5*TILE; player.spin=0;
@@ -398,6 +430,13 @@
     heldDir=null; heldCode=null;
     const pdir=[{x:1,y:0},{x:0,y:1},{x:-1,y:0},{x:0,y:-1}].find(d=>!isWall(1+d.x,1+d.y)) || {x:1,y:0};
     player.dir={...pdir}; player.ang=Math.atan2(pdir.y,pdir.x);
+    // 車を乗り換える。スティックのつまみも同じ色にして、いま誰で走っているかを
+    // 操作中の指先でも分かるようにする
+    const car=CARS[carIndex()];
+    player.color=car.c;
+    document.documentElement.style.setProperty('--car', car.c);
+    carName=2.0;
+    syncCam();
   }
 
   function newGame(){
@@ -409,12 +448,13 @@
     const pool=cells.filter(([x,y])=>!(x<5&&y<5)).sort(()=>Math.random()-.5);
     for(let i=0;i<NTARGET;i++){ const [x,y]=pool[i]; targets.push({x:(x+.5)*TILE,y:(y+.5)*TILE,got:false,ch:CNP[i]}); }
     smoke=[]; cam={x:0,y:0}; score=0; got=0; fuel=100; emitting=false; t=0;
-    lives=LIVES_START; invul=0; dryT=0;
+    lives=LIVES_START; invul=0; dryT=0; carName=0;
     paint=new Uint8Array(COLS*ROWS); painted=0;
     rosterFlash=new Float32Array(NTARGET);
     exitCell=farthestCell(grid); exitOpen=false;
     placePlayer();
     state='play'; ov.classList.add('hidden'); last=performance.now(); requestAnimationFrame(loop);
+    bgmStart();
   }
 
   const cellOf=c=> [Math.floor(c.x/TILE), Math.floor(c.y/TILE)];
@@ -499,6 +539,7 @@
     const k = dt*60;
     if(invul>0) invul-=dt;
     for(let i=0;i<rosterFlash.length;i++) if(rosterFlash[i]>0) rosterFlash[i]-=dt;
+    if(carName>0) carName-=dt;
     // 燃料切れは即死ではなく減速。そこから DRY_TIME 秒かけて止まり、
     // 止まった時点で終わる。stepCar より前に効かせる必要がある
     // （atCenter のしきい値が c.speed*k なので、速度と同じ値でないと壁を抜ける）
@@ -565,19 +606,121 @@
     if(fuel<0) fuel=0;   // 燃料切れでは終わらない。速度は update の先頭で落としている
     if(state!=='play') return;
 
-    cam.x=clamp(player.x-VW/2,0,Math.max(0,WW-VW));
-    cam.y=clamp(player.y-VH/2,0,Math.max(0,WH-VH));
+    syncCam();
   }
   const clamp=(v,a,b)=> v<a?a:v>b?b:v;
 
-  let actx;
-  function beep(f,d,type='square',v=.05){
-    try{ actx=actx||new (window.AudioContext||window.webkitAudioContext)();
-      const o=actx.createOscillator(),g=actx.createGain();
-      o.type=type;o.frequency.value=f;g.gain.value=v;o.connect(g);g.connect(actx.destination);
-      const n=actx.currentTime;g.gain.setValueAtTime(v,n);g.gain.exponentialRampToValueAtTime(.0001,n+d);
-      o.start(n);o.stop(n+d);}catch(e){}
+  // カメラを自機に合わせる。update() の最後だけでなく、自機を動かした直後にも
+  // 呼ぶこと。crash() は update() を途中で抜けるので、ここを呼ばないと
+  // 復活した最初の1フレームだけ古いカメラで描かれ、自機が画面外に飛ぶ
+  function syncCam(){
+    cam.x=clamp(player.x-VW/2,0,Math.max(0,WW-VW));
+    cam.y=clamp(player.y-VIEW_H/2,0,Math.max(0,WH-VIEW_H));
   }
+
+  // ===== 音 =====
+  // iOS Safari は AudioContext を suspended で作る。ユーザー操作の中で resume()
+  // しないと鳴らないので、最初のタップ/クリック/キー入力で必ず解除する
+  let actx, master, muted=false;
+  try{ muted = localStorage.getItem('nounrally_mute')==='1'; }catch(e){}
+
+  function audio(){
+    if(!actx){
+      try{
+        actx=new (window.AudioContext||window.webkitAudioContext)();
+        master=actx.createGain();
+        master.gain.value = muted?0:1;
+        master.connect(actx.destination);
+      }catch(e){ return null; }
+    }
+    if(actx.state==='suspended') actx.resume().catch(()=>{});
+    return actx;
+  }
+  function unlockAudio(){ audio(); }
+  addEventListener('pointerdown',unlockAudio,{once:false});
+  addEventListener('keydown',unlockAudio,{once:false});
+
+  function beep(f,d,type='square',v=.05){
+    const a=audio(); if(!a) return;
+    try{
+      const o=a.createOscillator(), g=a.createGain();
+      o.type=type; o.frequency.value=f; o.connect(g); g.connect(master);
+      const n=a.currentTime;
+      g.gain.setValueAtTime(v,n); g.gain.exponentialRampToValueAtTime(.0001,n+d);
+      o.start(n); o.stop(n+d);
+    }catch(e){}
+  }
+
+  // ---- BGM ----
+  // ラリーXの原曲はナムコの著作物なので、作風だけ寄せたオリジナル。
+  // 8分音符32ステップ(4小節)の単調なループ。数字は MIDI ノート番号、0は休符
+  const BGM_LEAD = [69, 0,72,76, 0,74,72, 0,  69, 0,67,69, 0,72, 0, 0,
+                    74, 0,77,76, 0,72,69, 0,  67, 0,64,67, 0,69, 0, 0];
+  // ベースは根音と5度を交互に踏む。Am Am Dm G
+  const BGM_BASS = [45,52,45,52, 45,52,45,52,  45,52,45,52, 45,52,45,52,
+                    50,57,50,57, 50,57,50,57,  43,50,43,50, 43,50,43,50];
+  const STEP_BASE = 0.132;   // 8分音符の長さ(秒)
+  const STEP_FAST = 0.098;   // 燃料が少ないときのテンポ
+  const hz = n => 440*Math.pow(2,(n-69)/12);
+
+  let bgmOn=false, bgmStep=0, bgmNext=0, bgmTimer=null;
+
+  function bgmVoice(note, at, dur, type, vol){
+    const a=actx;
+    const o=a.createOscillator(), g=a.createGain();
+    o.type=type; o.frequency.setValueAtTime(hz(note), at);
+    o.connect(g); g.connect(master);
+    // 矩形波をそのまま鳴らすとプチプチ鳴るので、頭と尻に短い傾斜をつける
+    g.gain.setValueAtTime(0, at);
+    g.gain.linearRampToValueAtTime(vol, at+0.008);
+    g.gain.setValueAtTime(vol, at+dur*0.7);
+    g.gain.linearRampToValueAtTime(0, at+dur);
+    o.start(at); o.stop(at+dur+0.02);
+  }
+
+  // 先読みしてスケジュールする。setInterval だけで鳴らすとタイミングが揺れる
+  function bgmTick(){
+    const a=audio(); if(!a || !bgmOn) return;
+    const step = (state==='play' && fuel<25) ? STEP_FAST : STEP_BASE;
+    while(bgmNext < a.currentTime + 0.12){
+      const i = bgmStep % 32;
+      const at = Math.max(bgmNext, a.currentTime+0.01);
+      const ld = BGM_LEAD[i], bs = BGM_BASS[i];
+      if(ld) bgmVoice(ld, at, step*0.9, 'square', 0.055);
+      if(bs) bgmVoice(bs, at, step*0.8, 'triangle', 0.085);
+      bgmNext = at + step;
+      bgmStep++;
+    }
+  }
+  function bgmStart(){
+    const a=audio(); if(!a) return;
+    bgmOn=true; bgmStep=0; bgmNext=a.currentTime+0.05;
+    if(!bgmTimer) bgmTimer=setInterval(bgmTick,25);
+  }
+  function bgmStop(){
+    bgmOn=false;
+    if(bgmTimer){ clearInterval(bgmTimer); bgmTimer=null; }
+  }
+  // クリアのジングル。BGMを止めてから鳴らす
+  function jingle(){
+    bgmStop();
+    const a=audio(); if(!a) return;
+    const seq=[69,72,76,81], t0=a.currentTime+0.02;
+    seq.forEach((n,i)=> bgmVoice(n, t0+i*0.11, 0.10, 'square', 0.07));
+    bgmVoice(81, t0+4*0.11, 0.42, 'square', 0.07);
+    bgmVoice(57, t0+4*0.11, 0.42, 'triangle', 0.09);
+  }
+
+  const muteBtn=document.getElementById('mute');
+  function applyMute(){
+    if(master) master.gain.value = muted?0:1;
+    muteBtn.textContent = muted?'🔇':'🔊';
+    muteBtn.setAttribute('aria-label', muted?'音を出す':'音を消す');
+    muteBtn.classList.toggle('off', muted);
+    try{ localStorage.setItem('nounrally_mute', muted?'1':'0'); }catch(e){}
+  }
+  muteBtn.addEventListener('click',e=>{ e.stopPropagation(); muted=!muted; audio(); applyMute(); });
+  applyMute();
 
   // ⌐◨-◨ ノグルズ。咲耶スクランブル側の drawNoggles() と同じ作りで、
   // 原点は中心。フレーム色だけ差し替えられるようにしてある
@@ -645,9 +788,9 @@
     // 先に置いた名札を避けて上へ逃がす
     ctx.font='bold 8px ui-monospace,monospace';
     const bw=Math.ceil(ctx.measureText(ch.n).width)+8, bh=9;
-    // 既定は頭上。上に逃がすとHUD帯へ潜って読めなくなる位置なら、
-    // 最初から足元側に出して下へ逃がす。基準は帯の高さ(HUD_H)に合わせること
-    const above=(py-s/2-11)>=HUD_H+2, stepY=above?-(bh+2):(bh+2);
+    // 既定は頭上。世界は帯の下へずらして描くので、基準は描画領域の上端(0)。
+    // 上に逃がすと切り落とされる位置なら、最初から足元側に出して下へ逃がす
+    const above=(py-s/2-11)>=2, stepY=above?-(bh+2):(bh+2);
     const bx=px-bw/2;
     let by=above? py-s/2-11 : py+s/2+2;
     for(let guard=0; guard<6; guard++){
@@ -658,10 +801,17 @@
     ctx.fillStyle='rgba(21,15,26,.8)'; ctx.fillRect(bx,by,bw,bh);
     ctx.fillStyle=ch.c; ctx.textAlign='center'; ctx.fillText(ch.n, px, by+7);
   }
+  const VIEW_H = VH - HUD_H;   // 迷路を描ける高さ
+
   function render(){
     ctx.fillStyle='#000'; ctx.fillRect(0,0,VW,VH);
+    // 以降の世界の描画はすべて帯の下へずらし、はみ出しは切り落とす。
+    // これで帯の下に迷路も車も入り込まない
+    ctx.save();
+    ctx.beginPath(); ctx.rect(0,HUD_H,VW,VIEW_H); ctx.clip();
+    ctx.translate(0,HUD_H);
     const x0=Math.floor(cam.x/TILE), y0=Math.floor(cam.y/TILE);
-    const x1=Math.ceil((cam.x+VW)/TILE), y1=Math.ceil((cam.y+VH)/TILE);
+    const x1=Math.ceil((cam.x+VW)/TILE), y1=Math.ceil((cam.y+VIEW_H)/TILE);
     for(let y=y0;y<=y1;y++)for(let x=x0;x<=x1;x++){
       if(x<0||y<0||x>=COLS||y>=ROWS) continue;
       const px=x*TILE-cam.x, py=y*TILE-cam.y, g=grid[y][x];
@@ -683,8 +833,10 @@
     if(exitOpen){
       const ex=exitCell[0]*TILE-cam.x, ey=exitCell[1]*TILE-cam.y;
       if(ex>-TILE&&ey>-TILE&&ex<VW&&ey<VH){
+        // 市松旗。黄色は シャオランカー に使うので、旗は白と黒に戻した
         const on=((t*4)|0)%2===0;
-        ctx.fillStyle=on?C.exit:'#fff';
+        ctx.fillStyle='#f2e9ef'; ctx.fillRect(ex,ey,TILE,TILE);
+        ctx.fillStyle=on?'#150f1a':'#3d243d';
         for(let i=0;i<4;i++)for(let j=0;j<4;j++) if((i+j)%2===0)
           ctx.fillRect(ex+i*6,ey+j*6,6,6);
       }
@@ -694,7 +846,11 @@
     // 無敵の間は点滅させる。点滅していること自体が「いまは当たらない」の合図
     if(invul<=0 || ((t*9)|0)%2===0) drawCar(player);
 
-    ctx.fillStyle='rgba(21,15,26,.8)'; ctx.fillRect(0,0,VW,HUD_H);
+    ctx.restore();   // 世界の描画はここまで
+
+    // HUD帯。下に迷路は無いので透かす必要がない。透かすと帯が読みにくくなる
+    ctx.fillStyle='#150f1a'; ctx.fillRect(0,0,VW,HUD_H);
+    ctx.fillStyle=C.wall2;  ctx.fillRect(0,HUD_H-2,VW,2);   // 境目のヘアライン
     ctx.fillStyle=C.ink; ctx.font='bold 12px ui-monospace,monospace'; ctx.textAlign='left';
     ctx.fillText('CNP '+got+'/'+NTARGET, 8,15);
     ctx.textAlign='center';
@@ -714,17 +870,28 @@
       ctx.fillRect(8,VH-14,(VW-112)*left,10);
     }
     drawRoster();
+    // 乗り換え直後だけドライバー名を出す。無敵の点滅と合わせて
+    // 「いま別の車に替わった」ことを伝える
+    if(carName>0){
+      const car=CARS[carIndex()];
+      ctx.globalAlpha=Math.min(1,carName);
+      ctx.font='bold 15px ui-monospace,monospace'; ctx.textAlign='center';
+      ctx.fillStyle=car.c; ctx.fillText(car.n+' CAR', VW/2, HUD_H+34);
+      ctx.globalAlpha=1;
+    }
     ctx.fillStyle=C.ink; ctx.font='bold 8px ui-monospace,monospace'; ctx.textAlign='left'; ctx.fillText('FUEL',8,VH-16);
     // 燃料が尽きたら「減速した」ことを伝える。黙って遅くすると故障に見える
     if(fuel<=0 && ((t*3)|0)%2===0){
       ctx.fillStyle=C.enemy; ctx.font='bold 9px ui-monospace,monospace';
       ctx.fillText('OUT OF FUEL - '+Math.ceil(DRY_TIME-dryT), 36, VH-16);
     }
-    // 残りの車。いま走っている1台は数えない（アーケードの流儀）
+    // 残りの車。いま走っている1台は数えない（アーケードの流儀）。
+    // 屋根の色はそのドライバーの色なので、次に誰が出てくるかが分かる
     for(let i=0;i<Math.max(0,lives-1);i++){
+      const car=CARS[Math.min(carIndex()+1+i, CARS.length-1)];
       const bx=VW-14-i*15, by=VH-9;
-      ctx.fillStyle=C.wall2;  ctx.fillRect(bx-10,by-5,11,10);   // 車体。背景と同色だと潰れる
-      ctx.fillStyle=C.player; ctx.fillRect(bx-10,by-5,11,3);    // 屋根はピンク＝自機の徴
+      ctx.fillStyle=C.wall2; ctx.fillRect(bx-10,by-5,11,10);
+      ctx.fillStyle=car.c;   ctx.fillRect(bx-10,by-5,11,3);
     }
 
   }
@@ -739,7 +906,7 @@
       if(grid[y][x]===1){ g.fillStyle='#4a2d4a'; g.fillRect(x*sx,y*sy,Math.ceil(sx),Math.ceil(sy)); }
       else if(paint && paint[y*COLS+x]){ g.fillStyle='#3b3346';   // 塗った所
         g.fillRect(x*sx,y*sy,Math.ceil(sx),Math.ceil(sy)); } }
-    if(exitOpen && ((t*4)|0)%2===0){ g.fillStyle=C.exit;
+    if(exitOpen && ((t*4)|0)%2===0){ g.fillStyle='#f2e9ef';
       g.fillRect(exitCell[0]*sx-1*u, exitCell[1]*sy-1*u, Math.ceil(sx)+2*u, Math.ceil(sy)+2*u); }
     // CNPは2x2の単色ドットだと11体の色が読めない。3x3＋白フチにし、
     // 11体とも同じ位相で点滅させる。位相をバラすとチカチカして逆に読めない
@@ -822,10 +989,10 @@
     invul=INVUL;
   }
 
-  function win(){ state='over';
+  function win(){ state='over'; jingle();
     finish('CLEAR!', 'SCORE '+score+' &nbsp;/&nbsp; 踏破 '+painted+'マス ('+
       Math.round(painted/openCells().length*100)+'%) &nbsp;/&nbsp; 残燃料 '+Math.round(fuel)); }
-  function lose(r){ state='over';
+  function lose(r){ state='over'; bgmStop();
     finish('GAME OVER', r+' &nbsp;/&nbsp; SCORE '+score+' (CNP '+got+'/'+NTARGET+
       ' &nbsp;踏破 '+painted+'マス)'); }
   function finish(title,sub){
@@ -839,6 +1006,7 @@
   const KEYDIR={ArrowUp:{x:0,y:-1},KeyW:{x:0,y:-1},ArrowDown:{x:0,y:1},KeyS:{x:0,y:1},
                 ArrowLeft:{x:-1,y:0},KeyA:{x:-1,y:0},ArrowRight:{x:1,y:0},KeyD:{x:1,y:0}};
   addEventListener('keydown',e=>{
+    if(e.code==='KeyM'){ muted=!muted; audio(); applyMute(); return; }
     if(e.code==='Space'){ e.preventDefault(); emitting=true; return; }
     const d=KEYDIR[e.code];
     if(d){ e.preventDefault();
@@ -931,7 +1099,7 @@
   // idle preview
   grid=genMaze(); player=mkCar(1.5*TILE,1.5*TILE,C.player,false);
   enemies=[]; targets=[]; smoke=[]; cam={x:0,y:0}; fuel=100; score=0; got=0; t=0;
-  lives=LIVES_START; invul=0; dryT=0;
+  lives=LIVES_START; invul=0; dryT=0; carName=0;
   paint=new Uint8Array(COLS*ROWS); painted=0;
   rosterFlash=new Float32Array(NTARGET);
   exitCell=farthestCell(grid); exitOpen=false;
