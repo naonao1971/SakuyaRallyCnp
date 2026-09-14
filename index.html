@@ -64,6 +64,7 @@
   #pause.on{opacity:.96;pointer-events:auto;}
   #pause.on:active{transform:translate(-50%,-50%) scale(.94);}
   #ov h2{flex:0 0 auto;font-size:clamp(18px,5vw,30px);letter-spacing:.06em;}
+  #ov h2 .g{color:var(--pink);}
   /* 英語表記。リザルト(CLEAR!/GAME OVER)では邪魔なので、そのとき隠す */
   #ovsub{flex:0 0 auto;margin-top:-2px;font-size:clamp(9px,2.2vh,11px);
     letter-spacing:.24em;opacity:.5;}
@@ -133,8 +134,19 @@
     /* ステージは縮まない側なので、右列は「ステージが使えなかった余り」だけを吸う。
        横幅が制約になる端末(iPhone SE)では最小幅で止まり、ステージは削られない。
        上限172pxは縦から決めた: 立ち絵0.75W + レーダー0.76W + ボタン + 隙間 */
+    /* 右列の中身の背は「列の幅」で決まる ― 立ち絵は 4:3 なので 0.75W、
+       レーダーは 33:25 なので 0.758W、ボタン列 54px、隙間 16px。
+       合わせて 1.51W + 70px。172px で固定すると 330px 要ることになり、
+       背の低い画面では #play(100svh - 26px)からあふれて、画面下の注意書きや
+       SMOKE と重なる（実測: 852x349 で 7px、852x309 で 47px あふれていた）。
+       そこで使える高さからも幅の上限を決める。102 = 26(注意書きの行) + 70(中身の
+       固定分) + 6(安全代) */
     #side{order:2;justify-content:space-between;align-items:stretch;
-      flex:1 1 auto;min-width:92px;max-width:172px;}
+      flex:1 1 auto;min-width:92px;
+      max-width:min(172px, calc((100svh - 102px) / 1.51));}
+    /* 画面の隅に固定で置くもの(確認用の⚙など)と重ならないよう、注意書きは
+       左右に場所を空けたうえで中央に置く */
+    .site-footer{padding-inline:86px;}
     /* 右列の幅いっぱいに広げる。立ち絵は基本が132px固定なので上書きが要る */
     #pilot{width:100%;}
     #smk{flex:1 1 auto;min-height:54px;font-size:15px;padding:12px 10px;}
@@ -149,6 +161,7 @@
     @media (orientation:landscape) and (max-height:600px) and (hover:none){
       #stage{height:min(calc(100vh - 34px), 420px, calc((100vw - 140px) / 1.6));}
       #play{height:calc(100vh - 26px);}
+      #side{max-width:min(172px, calc((100vh - 102px) / 1.51));}
     }
   }
 
@@ -166,7 +179,9 @@
   #rotate .how{font-size:12.5px;line-height:1.8;opacity:.85;max-width:min(100%,380px);}
   #rotate .turn{margin-top:4px;font-size:15px;font-weight:800;color:var(--gold);}
   #rotate .icon{font-size:34px;line-height:1;}
-  #rotate .note{font-size:10px;opacity:.45;line-height:1.6;}
+  /* 和文は文字単位で折り返せてしまい「…ファンアートで／す」のように
+     1文字だけ次行へ落ちる。keep-all で欧文の単語境界だけで折らせる */
+  #rotate .note{font-size:10px;opacity:.45;line-height:1.6;word-break:keep-all;}
 </style>
 </head>
 <body>
@@ -178,7 +193,7 @@
       <canvas id="c" width="614" height="384"></canvas>
       <button id="pause" type="button" aria-label="一時停止">&#x23F8;</button>
       <div id="ov">
-        <h2 id="ovt">咲耶Nounラリー</h2>
+        <h2 id="ovt">咲耶<span class="g">Noun</span>ラリー</h2>
         <div id="ovsub">SakuyaNounRally</div>
         <p id="ovp">CNP11体を集めて、出口へ戻れ。通った跡が得点。<br>車は止まらない ― 曲がる方向だけ決める。<br>壁に当たると自動で右へ。行き止まりだけ跳ね返る。<br>赤い車に触れるとクラッシュ。車は3台。<br>SMOKE で敵はスピン。ただし燃料を多く食う。<br>燃料が尽きると減速し、8秒で力尽きる。<br><br>スマホ: 画面を押したまま倒す<br>PC: 矢印/WASD ・ Space=煙 ・ M=音 ・ P=一時停止</p>
         <button id="btn">START</button>
