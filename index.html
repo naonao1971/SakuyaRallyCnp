@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>NOUN RALLY ⌐◨-◨ (proto v4)</title>
+<title>咲耶Nounラリー ⌐◨-◨ (proto v4)</title>
 <!-- アイコンを明示しないとブラウザが /favicon.ico を自動で取りに行き、404になる。
      apple-touch-iconは「ホーム画面に追加」でiOSが使う。
      どちらも咲耶スクランブルと同じものを流用している -->
@@ -29,6 +29,8 @@
   #wrap{width:min(96vw,560px);}
   h1{font-size:clamp(15px,4vw,22px);letter-spacing:.14em;text-align:center;margin-bottom:6px;font-weight:800;}
   h1 .g{color:var(--pink);}
+  h1 .en{opacity:.55;font-size:.62em;letter-spacing:.18em;}
+  h1 .ver{opacity:.4;font-size:.62em;}
 
   /* 既定は縦積み・幅基準。PCと縦持ちはこれで足りる。
      DOM順は横並び(パッドが左)を優先しているので、縦積みでは order で並べ替える */
@@ -44,10 +46,29 @@
      縮んでよいのは説明文だけ。見出しとボタンは flex:0 0 auto で死守し、
      説明文に min-height:0 + overflow-y:auto を与えて、そこだけ縮ませる。
      min-height:0 が無いと flex アイテムは中身より小さくならず、縮まない */
-  #ov{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  #ov{position:absolute;inset:0;z-index:8;display:flex;flex-direction:column;align-items:center;justify-content:center;
     gap:8px;background:rgba(21,15,26,.9);text-align:center;padding:16px;overflow:hidden;}
   #ov.hidden{display:none;}
+  /* ポーズ。コースの中央に置く。プレイ中はほぼ透明で邪魔をせず、止めている間だけ
+     はっきり出す。canvas の上 44px は HUD 帯なので、帯を除いた「走る場所」の
+     中心へ寄せてある(44/384 = 11.5% の半分だけ下げて 55.7%)。
+     プレイ中は pointer-events:none。ここを押せるようにすると、画面のどこでも
+     触れて出るスティックの真ん中に死角ができ、中央では曲がれなくなる。
+     プレイ中のポーズは「中央で、動かさずに離したとき」だけ canvas 側で拾う */
+  #pause{position:absolute;left:50%;top:55.7%;transform:translate(-50%,-50%);z-index:6;
+    display:none;width:52px;height:52px;border-radius:50%;
+    border:2px solid rgba(242,233,239,.55);background:rgba(21,15,26,.55);
+    color:var(--ink);font:inherit;font-size:20px;line-height:1;
+    opacity:.13;transition:opacity .15s ease;pointer-events:none;}
+  #pause.show{display:block;}
+  #pause.on{opacity:.96;pointer-events:auto;}
+  #pause.on:active{transform:translate(-50%,-50%) scale(.94);}
   #ov h2{flex:0 0 auto;font-size:clamp(18px,5vw,30px);letter-spacing:.06em;}
+  #ov h2 .g{color:var(--pink);}
+  /* 英語表記。リザルト(CLEAR!/GAME OVER)では邪魔なので、そのとき隠す */
+  #ovsub{flex:0 0 auto;margin-top:-2px;font-size:clamp(9px,2.2vh,11px);
+    letter-spacing:.24em;opacity:.5;}
+  #ovsub.hidden{display:none;}
   #ov p{flex:0 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;
     font-size:clamp(11px,2.8vh,13px);opacity:.85;line-height:1.6;}
   #btn{flex:0 0 auto;margin-top:4px;font:inherit;font-weight:800;letter-spacing:.1em;padding:9px 20px;
@@ -118,8 +139,19 @@
     /* ステージは縮まない側なので、右列は「ステージが使えなかった余り」だけを吸う。
        横幅が制約になる端末(iPhone SE)では最小幅で止まり、ステージは削られない。
        上限172pxは縦から決めた: 立ち絵0.75W + レーダー0.76W + ボタン + 隙間 */
+    /* 右列の中身の背は「列の幅」で決まる ― 立ち絵は 4:3 なので 0.75W、
+       レーダーは 33:25 なので 0.758W、ボタン列 54px、隙間 16px。
+       合わせて 1.51W + 70px。172px で固定すると 330px 要ることになり、
+       背の低い画面では #play(100svh - 26px)からあふれて、画面下の注意書きや
+       SMOKE と重なる（実測: 852x349 で 7px、852x309 で 47px あふれていた）。
+       そこで使える高さからも幅の上限を決める。102 = 26(注意書きの行) + 70(中身の
+       固定分) + 6(安全代) */
     #side{order:2;justify-content:space-between;align-items:stretch;
-      flex:1 1 auto;min-width:92px;max-width:172px;}
+      flex:1 1 auto;min-width:92px;
+      max-width:min(172px, calc((100svh - 102px) / 1.51));}
+    /* 画面の隅に固定で置くもの(確認用の⚙など)と重ならないよう、注意書きは
+       左右に場所を空けたうえで中央に置く */
+    .site-footer{padding-inline:86px;}
     /* 右列の幅いっぱいに広げる。立ち絵は基本が132px固定なので上書きが要る */
     #pilot{width:100%;}
     #smk{flex:1 1 auto;min-height:54px;font-size:15px;padding:12px 10px;}
@@ -134,6 +166,7 @@
     @media (orientation:landscape) and (max-height:600px) and (hover:none){
       #stage{height:min(calc(100vh - 34px), 420px, calc((100vw - 140px) / 1.6));}
       #play{height:calc(100vh - 26px);}
+      #side{max-width:min(172px, calc((100vh - 102px) / 1.51));}
     }
   }
 
@@ -145,23 +178,29 @@
   #rotate img{width:min(100%,420px);border-radius:8px;border:2px solid rgba(232,197,106,.45);}
   #rotate h2{font-size:clamp(17px,5.2vw,24px);letter-spacing:.08em;}
   #rotate h2 .g{color:var(--pink);}
+  #rotate .en{font-size:11px;letter-spacing:.24em;opacity:.5;margin-top:-4px;}
   /* 和文は 1ch が欧文の倍近い幅になるので ch 指定だと極端に狭くなる。
      px で指定して、端末幅いっぱいまで使えるようにする */
   #rotate .how{font-size:12.5px;line-height:1.8;opacity:.85;max-width:min(100%,380px);}
   #rotate .turn{margin-top:4px;font-size:15px;font-weight:800;color:var(--gold);}
   #rotate .icon{font-size:34px;line-height:1;}
-  #rotate .note{font-size:10px;opacity:.45;line-height:1.6;}
+  /* 和文は文字単位で折り返せてしまい「…ファンアートで／す」のように
+     1文字だけ次行へ落ちる。keep-all で欧文の単語境界だけで折らせる */
+  #rotate .note{font-size:10px;opacity:.45;line-height:1.6;word-break:keep-all;}
 </style>
 </head>
 <body>
 <div id="wrap">
-  <h1>NOUN RALLY <span class="g">&#x2310;&#x25E8;-&#x25E8;</span> <span style="opacity:.4;font-size:.7em">proto v4</span></h1>
+  <h1>咲耶<span class="g">Noun</span>ラリー <span class="g">&#x2310;&#x25E8;-&#x25E8;</span>
+    <span class="en">SakuyaNounRally</span> <span class="ver">proto v4</span></h1>
   <div id="play">
     <div id="stage">
       <canvas id="c" width="614" height="384"></canvas>
+      <button id="pause" type="button" aria-label="一時停止">&#x23F8;</button>
       <div id="ov">
-        <h2 id="ovt">NOUN RALLY</h2>
-        <p id="ovp">CNP11体を集めて、出口へ戻れ。通った跡が得点。<br>車は止まらない ― 曲がる方向だけ決める。<br>壁に当たると自動で右へ。行き止まりだけ跳ね返る。<br>赤い車に触れるとクラッシュ。車は3台。<br>SMOKE で敵はスピン。ただし燃料を多く食う。<br>燃料が尽きると減速し、8秒で力尽きる。<br><br>スマホ: 画面を押したまま倒す<br>PC: 矢印/WASD ・ Space=煙 ・ M=音</p>
+        <h2 id="ovt">咲耶<span class="g">Noun</span>ラリー</h2>
+        <div id="ovsub">SakuyaNounRally</div>
+        <p id="ovp">CNP11体を集めて、出口へ戻れ。通った跡が得点。<br>車は止まらない ― 曲がる方向だけ決める。<br>壁に当たると自動で右へ。行き止まりだけ跳ね返る。<br>赤い車に触れるとクラッシュ。車は3台。<br>SMOKE で敵はスピン。ただし燃料を多く食う。<br>燃料が尽きると減速し、8秒で力尽きる。<br><br>スマホ: 画面を押したまま倒す<br>PC: 矢印/WASD ・ Space=煙 ・ M=音 ・ P=一時停止</p>
         <button id="btn">START</button>
       </div>
     </div>
@@ -189,7 +228,8 @@
 <!-- 縦持ちの画面。タイトルと遊び方を見せ、遊ぶには横向きへ促す -->
 <div id="rotate" role="alert" aria-live="assertive">
   <img src="assets/rally_title.jpg" alt="ラリーカーを運転する咲耶とノグルズのナビゲーター">
-  <h2>NOUN RALLY <span class="g">&#x2310;&#x25E8;-&#x25E8;</span></h2>
+  <h2>咲耶<span class="g">Noun</span>ラリー <span class="g">&#x2310;&#x25E8;-&#x25E8;</span></h2>
+  <p class="en">SakuyaNounRally</p>
   <p class="how">迷路に散らばった CNP 11体を全部回収し、出口へ戻れ。<br>
     通った跡は得点になる。<br>
     車は止まらない ― 決められるのは曲がる方向だけ。<br>
@@ -225,6 +265,7 @@ addEventListener('unhandledrejection', function(e){
   const cv=document.getElementById('c'), ctx=cv.getContext('2d');
   const VW=cv.width, VH=cv.height;
   const ov=document.getElementById('ov'), ovt=document.getElementById('ovt'), ovp=document.getElementById('ovp'), btn=document.getElementById('btn');
+  const ovsub=document.getElementById('ovsub');
   // 縦持ちではゲームを止め、タイトルと遊び方の画面を出す。
   // 判定をイベント任せにしないこと。iOS Safari の orientationchange はビューポート
   // (=メディアクエリ)の更新より先に発火することがあり、その時点の古い値で固定すると
@@ -531,6 +572,7 @@ addEventListener('unhandledrejection', function(e){
     rosterFlash=new Float32Array(NTARGET);
     exitCell=farthestCell(grid); exitOpen=false;
     placePlayer();
+    resetPause(true);
     state='play'; ov.classList.add('hidden'); last=performance.now();
     cancelAnimationFrame(rafId); rafId=requestAnimationFrame(loop);
     bgmStart();
@@ -625,6 +667,32 @@ addEventListener('unhandledrejection', function(e){
     e.wantFresh = true;
   }
 
+  // ポーズ。画面中央のボタンで止める / 再開する。PC は P と Esc でも。
+  const pauseBtn=document.getElementById('pause');
+  let paused=false;
+  function setPaused(p){
+    if(state!=='play' || paused===p) return;
+    paused=p;
+    pauseBtn.classList.toggle('on',p);
+    pauseBtn.innerHTML = p ? '&#x25B6;' : '&#x23F8;';
+    pauseBtn.setAttribute('aria-label', p?'再開':'一時停止');
+    if(p){
+      // 押したまま止めると、再開した瞬間その向きへ走り出す。入力は必ず捨てる
+      heldDir=null; heldCode=null; emitting=false;
+      joy=null; ring.classList.remove('on'); knob.classList.remove('on');
+      bgmStop();
+    }else{
+      // 止めていた間の時間が dt にまとめて乗らないよう、時計を今に合わせる
+      last=performance.now(); bgmStart();
+    }
+  }
+  function resetPause(show){
+    paused=false;
+    pauseBtn.classList.remove('on');
+    pauseBtn.innerHTML='&#x23F8;';
+    pauseBtn.setAttribute('aria-label','一時停止');
+    pauseBtn.classList.toggle('show',show);
+  }
   // rafId: 走っている requestAnimationFrame。newGame() を「プレイ中に」
   // 呼ぶと二本目のループが立ち上がり、update() が毎フレーム2回走る＝2倍速に
   // なる。いまは RETRY ボタンが隠れている間は押せないので実機では起きないが、
@@ -1007,6 +1075,20 @@ addEventListener('unhandledrejection', function(e){
       ctx.fillStyle=car.c;   ctx.fillRect(bx-10,by-5,11,3);
     }
 
+    // ポーズの幕。中央には再開ボタン(DOM)が重なるので、文字は上下へ逃がす。
+    // 点滅に t は使えない ― 止めている間 update が走らず t が進まないため
+    if(paused){
+      ctx.fillStyle='rgba(21,15,26,.74)'; ctx.fillRect(0,0,VW,VH);
+      const cy=HUD_H+VIEW_H/2;
+      ctx.textAlign='center';
+      ctx.fillStyle=C.ink; ctx.font='bold 22px ui-monospace,monospace';
+      ctx.fillText('PAUSED', VW/2, cy-46);
+      if(((performance.now()/500)|0)%2===0){
+        ctx.font='11px ui-monospace,monospace'; ctx.fillStyle='rgba(242,233,239,.8)';
+        ctx.fillText('中央のボタンで再開', VW/2, cy+52);
+      }
+      ctx.textAlign='left';
+    }
   }
 
   // レーダーはコース画面の外(右列)に描く。画面内に重ねていたときは
@@ -1088,7 +1170,7 @@ addEventListener('unhandledrejection', function(e){
     let dt=(now-last)/1000; last=now; if(dt>.05)dt=.05;
     // 縦持ちの間は進行を止める。last は毎回更新しているので、横に戻したときに
     // 溜まった時間がまとめて進むことはない
-    if(!orientationBlocked) update(dt);
+    if(!orientationBlocked && !paused) update(dt);
     if(state==='play'){ render(); renderRadar(); rafId=requestAnimationFrame(loop); }
   }
   // クラッシュ。CNP・スコア・迷路は引き継ぎ、自機と敵の配置だけやり直す。
@@ -1114,14 +1196,17 @@ addEventListener('unhandledrejection', function(e){
     if(score>best){ best=score; store.set('nounrally_best',best); }
     beep(150,.28,'sawtooth',.06);
     ovt.textContent=title;
+    ovsub.classList.add('hidden');   // タイトルの英語表記はスタート画面だけ
     ovp.innerHTML=sub+'<br><br>車は止まらない。曲がる方向だけ決める。<br>壁に当たると自動で右へ。行き止まりは跳ね返る。<br>SMOKE は燃料を多く食う ― 使いどころ注意。';
     btn.textContent='RETRY'; ov.classList.remove('hidden');
+    resetPause(false);
   }
 
   const KEYDIR={ArrowUp:{x:0,y:-1},KeyW:{x:0,y:-1},ArrowDown:{x:0,y:1},KeyS:{x:0,y:1},
                 ArrowLeft:{x:-1,y:0},KeyA:{x:-1,y:0},ArrowRight:{x:1,y:0},KeyD:{x:1,y:0}};
   addEventListener('keydown',e=>{
     if(e.code==='KeyM'){ muted=!muted; audio(); applyMute(); return; }
+    if(e.code==='KeyP'||e.code==='Escape'){ e.preventDefault(); setPaused(!paused); return; }
     if(e.code==='Space'){ e.preventDefault(); emitting=true; return; }
     const d=KEYDIR[e.code];
     if(d){ e.preventDefault();
@@ -1176,10 +1261,18 @@ addEventListener('unhandledrejection', function(e){
     knob.style.left=kx+'px'; knob.style.top=ky+'px';
     ring.classList.add('on'); knob.classList.add('on');
   }
+  // ポーズボタンの円の中か。ボタンはプレイ中 pointer-events:none なので、
+  // 指はここまで届く。中央でも普通にスティックが出せる
+  function overPause(e){
+    const r=pauseBtn.getBoundingClientRect();
+    if(!r.width) return false;
+    return Math.hypot(e.clientX-(r.x+r.width/2), e.clientY-(r.y+r.height/2)) <= r.width/2+6;
+  }
   cv.addEventListener('pointerdown',e=>{
-    if(state!=='play') return;
+    if(state!=='play' || paused) return;   // 止めている間はスティックを出さない
     e.preventDefault();
-    joy={id:e.pointerId, ox:e.clientX, oy:e.clientY, dir:null};
+    joy={id:e.pointerId, ox:e.clientX, oy:e.clientY, dir:null,
+         sx:e.clientX, sy:e.clientY, t0:performance.now(), onPause:overPause(e)};
     joyShow(joy.ox,joy.oy,joy.ox,joy.oy);
   });
   addEventListener('pointermove',e=>{
@@ -1205,12 +1298,20 @@ addEventListener('unhandledrejection', function(e){
   });
   const joyEnd=e=>{
     if(joy && e.pointerId!==joy.id) return;
+    // 中央のボタンの上で、倒しもせず、短く離した＝タップ。これだけをポーズにする
+    const tap = !!joy && joy.onPause && !joy.dir
+      && Math.hypot(e.clientX-joy.sx, e.clientY-joy.sy) < JOY_DEAD
+      && performance.now()-joy.t0 < 500;
     joy=null; ring.classList.remove('on'); knob.classList.remove('on');
     if(heldCode==='joy'){ heldCode=null; heldDir=null; }
+    if(tap) setPaused(true);
   };
   addEventListener('pointerup',joyEnd);
   addEventListener('pointercancel',joyEnd);
   btn.addEventListener('click',e=>{ e.stopPropagation(); newGame(); });
+
+  // ポーズ。止めている間も描画は続ける(PAUSEDの幕を出すため)。update だけ止める
+  pauseBtn.addEventListener('click',e=>{ e.stopPropagation(); setPaused(false); });
 
   // idle preview
   grid=genMaze(); player=mkCar(1.5*TILE,1.5*TILE,C.player,false);
