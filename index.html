@@ -294,6 +294,10 @@ addEventListener('unhandledrejection', function(e){
   // 姉妹作(咲耶スクランブル)は canvas 960x540 に 36px 枠。こちらは canvas が
   // 小さいので同じ比率まで落とした
   const ROSTER = { slot:20, gap:3, y:24, flash:0.75 };   // flash は秒
+  // ワープトンネル。抜けた直後の敵はしばらく遅い（本家パックマンの挙動）。
+  // 減速は c.speed を書き換えて効かせる。stepCar は atCenter のしきい値にも
+  // c.speed*k を使うので、ここを通さずに移動量だけ落とすと壁をすり抜ける
+  const TUNNEL_SLOW = 0.55, TUNNEL_TIME = 1.4;   // 減速率と、その持続秒数
   const HUD_H = ROSTER.y + ROSTER.slot;                  // HUD帯の高さ(44px)
   // 迷路を描く領域は HUD 帯の下だけ。帯を半透明にして上に重ねるだけでは、
   // 迷路や自機が帯の下に潜って読めなくなる（自機はスタート地点で y=36 に
@@ -304,7 +308,8 @@ addEventListener('unhandledrejection', function(e){
   // 近い色にすると「自機」と「危険」が混ざって読めなくなるため
   const C={ road:'#2a2233', wall:'#5f3a5f', wall2:'#3d243d', ink:'#f2e9ef',
            player:'#ff2d9b', enemy:'#ff4d2e', smoke:'#e6d6f2', rock:'#7a6b53', rock2:'#5a4d3a',
-           radarBg:'#120c18', wall2:'#3d243d', tire:'rgba(242,233,239,.11)', exit:'#ffd23f' };
+           radarBg:'#120c18', wall2:'#3d243d', tire:'rgba(242,233,239,.11)', exit:'#ffd23f',
+           tunnel:'#49e0d8' };
 
   let grid, player, enemies, targets, smoke, cam, state, score, got, fuel, emitting, t, best;
   let lives, invul;   // 残機と、復活後の無敵の残り秒数
@@ -314,6 +319,7 @@ addEventListener('unhandledrejection', function(e){
   let paint, painted;     // painted は塗ったマス数（得点と踏破率に使う）
   let rosterFlash;        // ロスターの枠が光る残り秒数。targets と同じ並び
   let exitCell, exitOpen; // 出口。11体そろうまで開かない
+  let tunnels=[];     // ワープトンネルの口。左右1組
   let dryT;           // 燃料が尽きてからの経過秒。DRY_TIME で力尽きる
   // localStorage は「あるのに触ると落ちる」ことがある。別オリジンの iframe で
   // 動かしたとき（アーティファクト等）、iOS Safari の「サイト越えトラッキングを
@@ -354,7 +360,33 @@ addEventListener('unhandledrejection', function(e){
       if(after!==reach-1){ g[y][x]=0; continue; }   // 塞いだ1マス以外も失われた＝分断した
       reach=after; rocks--;
     }
+    tunnels = digTunnels(g);
     return g;
+  }
+
+  // ワープトンネル。外周（これまで全部壁）の左右に口を1組あけ、片方へ走り込むと
+  // もう片方から出る。通路として地続きに繋ぐのではなく、口の中心で座標ごと
+  // 置き換える瞬間移動方式にした。地続きにすると isWall の「盤外は壁」という
+  // 前提が崩れ、AIの探索も出口のBFSも書き換えになる。
+  // 迷路は奇数マスを掘るので x=1 と x=COLS-2 は必ず通路。岩も x>=2 にしか
+  // 置かないので、奇数行を選べば口の内側は必ず開いている。
+  // y=1 はスタート行なので除く（出た瞬間にワープできてしまう）
+  function digTunnels(g){
+    const rows=[];
+    for(let y=3;y<ROWS-1;y+=2) if(g[y][1]===0 && g[y][COLS-2]===0) rows.push(y);
+    if(!rows.length) return [];
+    const ty=rows[(Math.random()*rows.length)|0];
+    g[ty][0]=3; g[ty][COLS-1]=3;
+    return [
+      { at:[0,ty],      out:{x:-1,y:0}, to:[COLS-1,ty] },
+      { at:[COLS-1,ty], out:{x: 1,y:0}, to:[0,ty]      },
+    ];
+  }
+  // いま乗っているマスがトンネルの口なら、その口を返す
+  function tunnelAt(c){
+    const cx=Math.floor(c.x/TILE), cy=Math.floor(c.y/TILE);
+    for(const tn of tunnels) if(tn.at[0]===cx && tn.at[1]===cy) return tn;
+    return null;
   }
   // スタート地点(1,1)から歩いて行ける通路マスの数。岩を置いても迷路が
   // 分断されないかの判定に使う。盤面は毎回1回しか作らないので素朴な探索で足りる
@@ -374,7 +406,13 @@ addEventListener('unhandledrejection', function(e){
     return n;
   }
 
-  const isWall=(cx,cy)=> cx<0||cy<0||cx>=COLS||cy>=ROWS|| grid[cy][cx]!==0;
+  // 3 はワープトンネルの口。車は通れるが「通路」ではない。openCells() が
+  // 外周を見ないので、CNPも敵の湧き位置も出口も口の上には絶対に来ない
+  const isWall=(cx,cy)=>{
+    if(cx<0||cy<0||cx>=COLS||cy>=ROWS) return true;
+    const g=grid[cy][cx];
+    return g!==0 && g!==3;
+  };
   // スタート(1,1)から最も遠い通路マス。出口をここに置く。
   // スタート地点に置くと、11体そろえたあとわざとクラッシュすれば
   // 復活位置＝出口になって即クリアできてしまう
@@ -447,7 +485,7 @@ addEventListener('unhandledrejection', function(e){
     // want が null なら「予約なし」。dir と同じ値を入れる方式だと、その後に
     // 車が自動で曲がった瞬間 want と dir がズレて予約として復活してしまう
     return { x,y,color,ai, dir:{x:1,y:0}, want:null, wantFresh:false, wantTimer:0,
-             speed:(ai?SPD_ENEMY:SPD_PLAYER), spin:0, ang:0 };
+             speed:(ai?SPD_ENEMY:SPD_PLAYER), spin:0, ang:0, tunnelT:0 };
   }
 
   // 敵はスタート地点(1,1)から遠い側に置く。復活のたびに置き直すので、
@@ -493,7 +531,8 @@ addEventListener('unhandledrejection', function(e){
     rosterFlash=new Float32Array(NTARGET);
     exitCell=farthestCell(grid); exitOpen=false;
     placePlayer();
-    state='play'; ov.classList.add('hidden'); last=performance.now(); requestAnimationFrame(loop);
+    state='play'; ov.classList.add('hidden'); last=performance.now();
+    cancelAnimationFrame(rafId); rafId=requestAnimationFrame(loop);
     bgmStart();
   }
 
@@ -519,6 +558,21 @@ addEventListener('unhandledrejection', function(e){
     if(c.spin>0){ c.spin-=k/60; c.ang+=0.35*k; return; }
     const step=c.speed*k;
     if(atCenter(c,step)){
+      // ワープ。口の上で外を向いていたら反対の口へ飛ぶ。
+      // 必ず下のどの分岐よりも先に置くこと。口の外側は壁なので、先に予約適用や
+      // 壁の自動旋回が走ると外を向いたまま曲げられてしまい、二度と抜けられない
+      const tn = tunnelAt(c);
+      if(tn && c.dir.x===tn.out.x && c.dir.y===tn.out.y){
+        c.x=(tn.to[0]+.5)*TILE; c.y=(tn.to[1]+.5)*TILE;
+        c.want=null; c.wantFresh=false; c.wantTimer=0;
+        if(c.ai) c.tunnelT=TUNNEL_TIME;   // 敵も通れるが、抜けた先でしばらく遅い
+        else beep(300,.12,'sine',.05);
+        // 中心に置いたままにすると、次のフレームも atCenter で判定される。
+        // 向きの条件で二重ワープはしないが、1マスぶん進めておく方が滑らか
+        c.x+=c.dir.x*step; c.y+=c.dir.y*step;
+        c.ang=Math.atan2(c.dir.y,c.dir.x);
+        return;
+      }
       // 予約された曲がりを適用（曲がるときだけ中心へスナップ）。
       // ただし後退（今の向きの真逆）は、押されたばかりの予約でないと通さない。
       // 自動で曲がったあとに残った古い予約が真逆を向いていると、来た道は必ず
@@ -571,7 +625,11 @@ addEventListener('unhandledrejection', function(e){
     e.wantFresh = true;
   }
 
-  let last;
+  // rafId: 走っている requestAnimationFrame。newGame() を「プレイ中に」
+  // 呼ぶと二本目のループが立ち上がり、update() が毎フレーム2回走る＝2倍速に
+  // なる。いまは RETRY ボタンが隠れている間は押せないので実機では起きないが、
+  // 一行で塞げるので塞いでおく（テストで実際に踏んだ）
+  let last, rafId=0;
   function update(dt){
     t+=dt;
     // dt は loop() で 0.05 秒に制限済みなので k は最大 3。1フレームの移動量は
@@ -599,13 +657,19 @@ addEventListener('unhandledrejection', function(e){
       if(player.wantTimer<=0){ player.want=null; player.wantFresh=false; }
     }
     stepCar(player,k);
-    for(const e of enemies){ aiThink(e,k); stepCar(e,k); }
+    for(const e of enemies){
+      if(e.tunnelT>0) e.tunnelT-=dt;
+      e.speed = SPD_ENEMY * (e.tunnelT>0 ? TUNNEL_SLOW : 1);
+      aiThink(e,k); stepCar(e,k);
+    }
 
     // タイヤ痕。いま居るマスに、進んでいる向きの軸を記録する。
     // 一度塗ったマスは二度と加点しない（クラッシュしても痕は引き継ぐ）
     {
       const cx=Math.floor(player.x/TILE), cy=Math.floor(player.y/TILE);
-      if(cx>=0&&cy>=0&&cx<COLS&&cy<ROWS){
+      // 口の上は塗らない。踏破率の分母(openCells)が外周を含まないので、
+      // ここで数えると 101% になる
+      if(cx>=0&&cy>=0&&cx<COLS&&cy<ROWS&&grid[cy][cx]===0){
         const i=cy*COLS+cx, bit=player.dir.x!==0 ? 1 : 2;
         if(paint[i]===0){ painted++; score+=PAINT_PTS; }
         paint[i] |= bit;
@@ -858,6 +922,15 @@ addEventListener('unhandledrejection', function(e){
       if(g===1){ ctx.fillStyle=C.wall; ctx.fillRect(px,py,TILE,TILE); ctx.fillStyle=C.wall2; ctx.fillRect(px,py+TILE-4,TILE,4); }
       else if(g===2){ ctx.fillStyle=C.road; ctx.fillRect(px,py,TILE,TILE);
         ctx.fillStyle=C.rock; ctx.fillRect(px+3,py+3,TILE-6,TILE-6); ctx.fillStyle=C.rock2; ctx.fillRect(px+3,py+TILE-8,TILE-6,5); }
+      // ワープの口。吸い込まれる向きに輪を流して「ただの通路ではない」と見せる
+      else if(g===3){ ctx.fillStyle='#0d1a1e'; ctx.fillRect(px,py,TILE,TILE);
+        ctx.strokeStyle=C.tunnel; ctx.lineWidth=2;
+        for(let i=0;i<3;i++){
+          const r=((i/3 + (t*0.9)%1)%1)*10+2;
+          ctx.globalAlpha=Math.max(0,.75-r/16);
+          ctx.beginPath(); ctx.arc(px+TILE/2,py+TILE/2,r,0,7); ctx.stroke();
+        }
+        ctx.globalAlpha=1; }
       else { ctx.fillStyle=C.road; ctx.fillRect(px,py,TILE,TILE);
         ctx.fillStyle='rgba(255,255,255,.04)'; ctx.fillRect(px+TILE/2-1,py+TILE/2-1,2,2);
         // タイヤ痕。塗りつぶさず、通った向きに沿った2本の線で残す
@@ -944,6 +1017,8 @@ addEventListener('unhandledrejection', function(e){
     g.fillStyle=C.radarBg; g.fillRect(0,0,RW,RH);
     for(let y=0;y<ROWS;y++)for(let x=0;x<COLS;x++){
       if(grid[y][x]===1){ g.fillStyle='#4a2d4a'; g.fillRect(x*sx,y*sy,Math.ceil(sx),Math.ceil(sy)); }
+      else if(grid[y][x]===3){ g.fillStyle=C.tunnel;   // ワープの口
+        g.fillRect(x*sx,y*sy,Math.ceil(sx),Math.ceil(sy)); }
       else if(paint && paint[y*COLS+x]){ g.fillStyle='#3b3346';   // 塗った所
         g.fillRect(x*sx,y*sy,Math.ceil(sx),Math.ceil(sy)); } }
     if(exitOpen && ((t*4)|0)%2===0){ g.fillStyle='#f2e9ef';
@@ -1014,7 +1089,7 @@ addEventListener('unhandledrejection', function(e){
     // 縦持ちの間は進行を止める。last は毎回更新しているので、横に戻したときに
     // 溜まった時間がまとめて進むことはない
     if(!orientationBlocked) update(dt);
-    if(state==='play'){ render(); renderRadar(); requestAnimationFrame(loop); }
+    if(state==='play'){ render(); renderRadar(); rafId=requestAnimationFrame(loop); }
   }
   // クラッシュ。CNP・スコア・迷路は引き継ぎ、自機と敵の配置だけやり直す。
   // 燃料は戻さない ― 戻すと残機が事実上の延命チケットになり、
