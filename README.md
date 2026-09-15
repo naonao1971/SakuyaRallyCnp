@@ -40,6 +40,79 @@ CNP11体を集める Rally-X 系の迷路ゲーム。車は止まらず、曲が
 以前は全クリアすると誰でも必ず 2420 点で同着だった。ベストスコアは
 `localStorage` に残る。
 
+## `localStorage` を素のまま呼ばないこと（STARTが効かなくなる）
+
+**`localStorage` は「あるのに触ると落ちる」ことがある。** 別オリジンの iframe で
+動かしたとき（アーティファクト等）、iOS Safari の「サイト越えトラッキングを防ぐ」
+（既定でオン）が効いていると、**`getItem` を呼んだ瞬間に `SecurityError`** が飛ぶ。
+
+初期化の途中でこれを踏むとスクリプトがその行で死に、**以降の
+`addEventListener` が1つも走らない**。HTML と CSS は生きているので画面は
+いつも通りに見え、**STARTを押しても何も起きない板**になる。原因がどこにも
+出ないので、見つけるのに時間がかかる。実際に踏んだ。
+
+必ずこのラッパー越しに使うこと。
+
+```js
+const store = {
+  get(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } },
+  set(k,v){ try{ localStorage.setItem(k,v); }catch(e){} },
+};
+```
+
+再現の仕方（Playwright）:
+
+```js
+await ctx.addInitScript(()=>{
+  Object.defineProperty(window,'localStorage',{configurable:true,
+    get(){ throw new DOMException('The operation is insecure.','SecurityError'); }});
+});
+```
+
+`sessionStorage` / `indexedDB` も同じ。**ブラウザの機能を初期化の本流で
+素のまま呼ばないこと。**
+
+## 向きの監視は「すべての宣言が終わってから」始めること
+
+`updateOrientation()` は `state` と `bgmOn` を触る。この関数は画面の向きを扱う
+都合でファイルの先頭近くに置いてあるが、**先頭で呼んではいけない**。
+`state`（宣言は 300行目あたり）も `bgmOn`（700行目あたり）も `let` なので、
+そこに届く前に読むと **TDZ で `ReferenceError`** になり、**スクリプトがそこで死ぬ**。
+
+死んだ先が「STARTを押しても何も起きない板」なので、原因がまるで見えない。
+**実際に踏んだ。**
+
+**横で開くと踏まない。** `if(should===orientationBlocked) return;` があり、横持ちでは
+`should` も `orientationBlocked` も `false` なので早期 return して `state` に届かない。
+**縦で開いた実機だけが死ぬ。** 手元のテストは横から始めていたので、ずっと気づけなかった。
+
+- 監視の開始（リスナー登録・`setInterval`・最初の1回）は **IIFE の末尾**で行う
+- 念のため `var booted` で守る。`var` は巻き上げで `undefined` になるので、
+  最初期に読んでも TDZ にならない（`let` にすると同じ罠に戻る）
+
+### 画面まわりのテストは必ず「縦で開いて横にする」を通すこと
+
+実機の流れは **縦で開く → 警告を見る → 横にする → START**。横から始めるテストでは
+この経路が一度も通らない。`rotate.mjs` に入れてある。
+
+| | 縦→横 | 横だけ |
+| --- | --- | --- |
+| 直す前 | **START が効かない** | 動く |
+| 直した後 | 動く | 動く |
+
+## 初期化で落ちたら画面に出すこと
+
+上の件は「黙って死ぬ」のが一番たちが悪かった。本体より**前**に
+`error` / `unhandledrejection` を拾う小さなスクリプトを置き、
+`#crash` の帯にメッセージを出している。押すと消える。
+
+本体より前に登録すること ― 本体の中で登録しても、本体が死ぬ側なので間に合わない。
+
+**出すのは「最初のエラー」にすること。** 2件目以降は1件目で死んだ巻き添えで、
+原因から遠ざかる。実際、真因は `bgmOn` の TDZ なのに、あとから 250ms ごとに出る
+`state` の TDZ で上書きされ、そちらを追いかけた。いまは1件目を保持し、
+`(以後 N件)` と件数だけ添える。
+
 ## 出口はスタート地点に置かないこと
 
 11体そろえたあと**わざとクラッシュすれば復活位置＝出口**になり、残機1つで
