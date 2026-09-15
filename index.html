@@ -197,15 +197,21 @@
 // 本体より先に登録すること。初期化の途中で例外が出ると、以降の
 // addEventListener が1つも走らず「STARTを押しても何も起きない」板になる。
 // 黙って死ぬと原因が分からないので、必ず画面に出す
-addEventListener('error', function(e){
+// 出すのは「最初のエラー」。2件目以降は1件目で死んだ巻き添えで、
+// 原因から遠ざかる（実際、真因は bgmOn なのに state の方を表示して追いかけた）
+var firstErr=null, errCount=0;
+function showErr(msg,line){
+  errCount++;
+  if(firstErr===null) firstErr='ERROR: '+msg+(line?' @'+line:'');
   var d=document.getElementById('crash'); if(!d) return;
-  d.textContent='ERROR: '+((e.error&&e.error.message)||e.message||e)+' @'+(e.lineno||'?');
+  d.textContent=firstErr+(errCount>1?'　(以後 '+(errCount-1)+'件)':'');
   d.hidden=false;
+}
+addEventListener('error', function(e){
+  showErr((e.error&&e.error.message)||e.message||String(e), e.lineno);
 });
 addEventListener('unhandledrejection', function(e){
-  var d=document.getElementById('crash'); if(!d) return;
-  d.textContent='ERROR: '+((e.reason&&e.reason.message)||e.reason);
-  d.hidden=false;
+  showErr('unhandled: '+((e.reason&&e.reason.message)||e.reason), 0);
 });
 </script>
 <script>
@@ -221,20 +227,18 @@ addEventListener('unhandledrejection', function(e){
   const portraitMQ=window.matchMedia('(orientation: portrait)');
   const isMobileDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
   let orientationBlocked=false;
+  var booted=false;   // 末尾で true。let だとここを読む時点で TDZ になる
   function updateOrientation(){
     const should = isMobileDevice && portraitMQ.matches;
     if(should===orientationBlocked) return;
     orientationBlocked=should;
     rotateEl.classList.toggle('visible', should);
     // 縦持ちの間は進行が止まるので、BGMも止める
-    if(should) bgmStop(); else if(state==='play') bgmStart();
+    // booted で守ること。この関数は state / bgmOn より前に定義されているので、
+    // 初期化が終わる前に呼ぶと let の TDZ で落ちる ― しかも落ちた先が
+    // 「STARTを押しても何も起きない」なので原因が見えない。実際に踏んだ
+    if(booted){ if(should) bgmStop(); else if(state==='play') bgmStart(); }
   }
-  if(typeof portraitMQ.addEventListener==='function') portraitMQ.addEventListener('change',updateOrientation);
-  else if(typeof portraitMQ.addListener==='function') portraitMQ.addListener(updateOrientation);
-  addEventListener('orientationchange',updateOrientation);
-  addEventListener('resize',updateOrientation);
-  setInterval(updateOrientation,250);   // イベントの取りこぼしに対する保険
-  updateOrientation();
 
   const TILE=24, COLS=33, ROWS=25;
   const WW=COLS*TILE, WH=ROWS*TILE;
@@ -1135,6 +1139,18 @@ addEventListener('unhandledrejection', function(e){
   rosterFlash=new Float32Array(NTARGET);
   exitCell=farthestCell(grid); exitOpen=false;
   render(); renderRadar();
+
+  // 向きの監視はここで始める。updateOrientation() は state / bgmOn を触るので、
+  // すべての宣言が終わったあとでなければ呼べない。
+  // （以前は定義の直後で呼んでいた。横で開くと should===orientationBlocked で
+  //   早期 return するため気づかず、縦で開いた実機だけが死んでいた）
+  booted=true;
+  if(typeof portraitMQ.addEventListener==='function') portraitMQ.addEventListener('change',updateOrientation);
+  else if(typeof portraitMQ.addListener==='function') portraitMQ.addListener(updateOrientation);
+  addEventListener('orientationchange',updateOrientation);
+  addEventListener('resize',updateOrientation);
+  setInterval(updateOrientation,250);   // イベントの取りこぼしに対する保険
+  updateOrientation();
 })();
 </script>
 </body>
