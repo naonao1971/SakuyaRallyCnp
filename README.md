@@ -643,6 +643,7 @@ const SPD_DRY    = 1.75;    // 1.4  * 1.25  燃料切れ後。敵より遅い
 | **B1** | **ポーズが効かない**（公開版のみ。B2と同根の疑い） | **未着手・B2のあと** |
 | **B2** | **画面が勝手に拡大する**（公開版のみ） | **未着手・これを先に** |
 | **B3** | **アイコンが姉妹作の飛行機のまま** | **未着手** |
+| **B4** | **アプリ化すると画面に収まらない**（公開版のみ） | **未着手・B2のあと** |
 | — | レア度（姉妹作の `CNP_TIERS` 相当）。ラリー側は11体とも同格 | 未着手 |
 | — | 難易度の再調整 | 未決 |
 
@@ -757,6 +758,56 @@ document.addEventListener("touchmove", e=>{
 
 **プレイ中だけ打ち消すこと。** タイトルやランキングを見ているときはズームできる
 ままにしておく（文字を拡大して読みたい人のため）。姉妹作もそうしている。
+
+#### B4 アプリ化（ホーム画面に追加）すると画面に収まらない
+
+公開版をホーム画面に追加して起動すると、レイアウトが画面からはみ出す。
+ブラウザで開いているときは収まっている。
+
+**ラリーには「アプリとして起動されたとき」の対応が1つも入っていない。**
+姉妹作（咲耶スクランブル）には全部入っている。
+
+| | ラリー | 姉妹作 |
+| --- | --- | --- |
+| `apple-mobile-web-app-capable` | **無し** | あり |
+| `apple-mobile-web-app-status-bar-style` | **無し** | `black-translucent` |
+| `viewport-fit=cover` | **無し** | あり |
+| `env(safe-area-inset-*)` | **0か所** | **6か所** |
+| `apple-touch-icon` | あり | あり |
+
+`apple-touch-icon` だけ流用してあるので**ホーム画面のアイコンは付く**が、
+その先の対応が抜けている。
+
+ビューポートの指定も姉妹作と違う。
+
+```html
+<!-- ラリー: maximum-scale と user-scalable は iOS で無視される。viewport-fit が無い -->
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<!-- 姉妹作 -->
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+```
+
+**なぜはみ出すか。** 横持ちのレイアウトは `100svh` に貼り付けてある
+（`#play{height:calc(100svh - 26px)}` / `#stage{height:min(calc(100svh - 34px), …)}`）。
+ノッチ・ホームインジケータ・ステータスバーのぶんを引いていないので、
+**ブラウザが返す高さと実際に使える高さがズレると、そのまま画面外へ出る。**
+`status-bar-style: black-translucent` はステータスバーを内容の上に重ねる指定なので、
+**safe-area の余白と必ずセットで入れること。** 片方だけ入れると内容がバーの下に潜る。
+
+**B2（拡大）との関係も疑うこと。** 拡大された状態が保存されたままアプリとして
+起動していると、同じように全部がはみ出す。**B2 を直したあとで、もう一度
+アプリ化して確かめる。**
+
+直し方は姉妹作の移植でよい。
+
+```css
+padding: 8px 8px calc(8px + env(safe-area-inset-bottom));
+left:   calc(18px + env(safe-area-inset-left));
+right:  calc(12px + env(safe-area-inset-right));
+```
+
+**再現環境の注意:** headless Chromium では再現しない。**iOS の
+スタンドアロン起動でしか起きない。** 確認は実機でしかできない。
 
 #### B3 アイコンが姉妹作の飛行機のまま
 
