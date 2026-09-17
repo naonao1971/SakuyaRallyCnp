@@ -1331,6 +1331,53 @@ addEventListener('unhandledrejection', function(e){
     if(zoomLock() && e.touches.length>1) e.preventDefault();
   }, {passive:false});
 
+  // レイアウトが画面からはみ出したときだけ、その数字を帯に出す。
+  // アプリ化(スタンドアロン)でだけ崩れる件(B4)を、実機から読み取るための自己申告。
+  // 収まっているときは何も出さないので普段は無害。
+  //
+  // 数字を見るまで原因を勘で決めないこと。safe-area だと思って余白を足しても、
+  // viewport-fit=cover を指定していない今は env(safe-area-inset-*) が全部 0 なので
+  // 何も変わらない ― 引くものが無い
+  // 既定は黙らせる。公開サイトの利用者に赤い帯を見せないため。
+  //   ?diag=1 を付けて開くと有効（localStorage に残るので、その状態で
+  //   ホーム画面に追加すればアプリ化しても効いたまま）
+  //   ?diag=0 で解除
+  const DIAG=(()=>{
+    const q=location.search;
+    if(q.indexOf('diag=1')>=0){ store.set('nounrally_diag','1'); return true; }
+    if(q.indexOf('diag=0')>=0){ store.set('nounrally_diag','0'); return false; }
+    return store.get('nounrally_diag')==='1';
+  })();
+  const svhProbe=document.createElement('div');
+  svhProbe.style.cssText='position:fixed;top:0;left:0;width:0;height:100svh;'+
+    'visibility:hidden;pointer-events:none;';
+  document.body.appendChild(svhProbe);
+  function layoutReport(){
+    if(!DIAG) return;
+    const crash=document.getElementById('crash');
+    if(!crash || !crash.hidden) return;   // 本物のエラーが出ていたらそちらを優先
+    // 測るのは #play(コースと右列)。#wrap だと見出しやフッターのはみ出しまで
+    // 拾ってしまい、遊ぶのに支障が無い場面でも鳴る
+    const r=document.getElementById('play').getBoundingClientRect();
+    const overR=Math.round(r.right-innerWidth),  overB=Math.round(r.bottom-innerHeight);
+    const overL=Math.round(-r.left),             overT=Math.round(-r.top);
+    if(Math.max(overR,overB,overL,overT) <= 1) return;
+    const m=q=>matchMedia(q).matches?1:0;
+    crash.textContent='LAYOUT はみ出し 右'+overR+' 下'+overB+' 左'+overL+' 上'+overT
+      +' / 画面'+innerWidth+'x'+innerHeight
+      +' svh'+svhProbe.offsetHeight
+      +' dpr'+(window.devicePixelRatio||0)
+      +' / 横'+m('(orientation:landscape)')
+      +' 高600以下'+m('(max-height:600px)')
+      +' hover'+m('(hover:hover)')
+      +' fine'+m('(pointer:fine)')
+      +' アプリ'+(navigator.standalone?1:m('(display-mode:standalone)'));
+    crash.hidden=false;
+  }
+  addEventListener('resize',()=>setTimeout(layoutReport,200));
+  addEventListener('orientationchange',()=>setTimeout(layoutReport,400));
+  setTimeout(layoutReport,300);
+
   // idle preview
   grid=genMaze(); player=mkCar(1.5*TILE,1.5*TILE,C.player,false);
   enemies=[]; targets=[]; smoke=[]; cam={x:0,y:0}; fuel=100; score=0; got=0; t=0;
