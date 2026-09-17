@@ -140,6 +140,15 @@
      JS が測った innerHeight を --vh に入れ、両者の小さい方を使う。
      var() の既定値を 100svh にしてあるので、JS が走る前も従来どおり動く */
   @media (orientation:landscape) and (max-height:600px) and (hover:none){
+    /* iOS のホーム画面アプリでは html,body{height:100%} が実際の表示領域より
+       大きい値を返すことがある。実測(iPhone 縦横 844x390 のアプリ起動):
+         画面390 svh390 cl390 ―― CSS が見ている高さは全部 390 で正しい
+         ところが body の箱は 484 になっていた (= 390 + (外844 - 画面750))
+       body は中央寄せなので、余った 94 の半分 47px だけ中身が下へずれ、
+       上が 5 → 52 になって下が 26 あふれていた。
+       高さの当てにならない箱の中で中央に置くのをやめ、上端に固定する。
+       #play の高さは svh と --vh から取っているので、そちらは信用できる */
+    body{align-items:flex-start;}
     #wrap{width:100%;}
     h1,#hint{display:none;}          /* 高さを稼ぐ。タイトルはスタート画面に出る */
     /* 行の高さを画面いっぱいに取り、十字キーとSMOKEを画面の下端へ寄せる。
@@ -1440,7 +1449,10 @@ addEventListener('unhandledrejection', function(e){
   // 起動直後に何度も測る。崩れが一瞬で直る場合も、ずっと残る場合も取りこぼさない
   for(const ms of [0,100,300,600,1200,2500,5000]) setTimeout(()=>layoutReport('t'+ms),ms);
   addEventListener('resize',          ()=>setTimeout(()=>layoutReport('resize'),200));
-  addEventListener('orientationchange',()=>setTimeout(()=>layoutReport('rotate'),400));
+  // 回転直後は iOS が値を返しきっていないことがあるので、何度か測り直す
+  addEventListener('orientationchange',()=>{
+    for(const ms of [400,1200,2500]) setTimeout(()=>layoutReport('rotate'+ms),ms);
+  });
   // 「何か触ったら直った」を捕まえる。指を離すたびに測り直す
   addEventListener('pointerup',       ()=>setTimeout(()=>layoutReport('tap'),120));
 
