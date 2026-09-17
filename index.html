@@ -1313,6 +1313,24 @@ addEventListener('unhandledrejection', function(e){
   // ポーズ。止めている間も描画は続ける(PAUSEDの幕を出すため)。update だけ止める
   pauseBtn.addEventListener('click',e=>{ e.stopPropagation(); setPaused(false); });
 
+  // iOS のピンチズームは touch-action:none では止まらない。WebKit独自の
+  // gesture* イベント経由で起きるので、明示的に打ち消す必要がある。
+  // (viewport の user-scalable=no も iOS 10 以降は無視される)
+  //
+  // 打ち消すのは「走っている間」だけ。スタート画面とリザルトには文字が多いので、
+  // 拡大して読みたい人のためにズームできるままにしておく(姉妹作と同じ方針)。
+  // 止めている間(paused)も走行中と同じ扱いにする ― ここでズームを許すと、
+  // 拡大したまま再開されて元の木阿弥になる
+  const zoomLock = () => state==='play';
+  for(const type of ['gesturestart','gesturechange','gestureend']){
+    document.addEventListener(type, e=>{ if(zoomLock()) e.preventDefault(); });
+  }
+  // gesture* を持たないブラウザ(Android Chrome 等)向けの保険。2本指の動きその
+  // ものを打ち消す。passive:false を明示しないと preventDefault が無視される
+  document.addEventListener('touchmove', e=>{
+    if(zoomLock() && e.touches.length>1) e.preventDefault();
+  }, {passive:false});
+
   // idle preview
   grid=genMaze(); player=mkCar(1.5*TILE,1.5*TILE,C.player,false);
   enemies=[]; targets=[]; smoke=[]; cam={x:0,y:0}; fuel=100; score=0; got=0; t=0;
