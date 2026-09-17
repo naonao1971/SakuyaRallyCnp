@@ -1362,15 +1362,15 @@ addEventListener('unhandledrejection', function(e){
   // 直った瞬間の値も見えるようにしておくこと（崩れている値だけでは、
   // どちらが正しい画面サイズなのか分からない）
   //
-  //   既定      : アプリ(スタンドアロン)起動で、実際にはみ出したときだけ出す
-  //   ?diag=1   : 収まっていても常に出す（localStorage に残る）
-  //   ?diag=0   : 解除
-  const DIAG=(()=>{
-    const q=location.search;
-    if(q.indexOf('diag=1')>=0){ store.set('nounrally_diag','1'); return true; }
-    if(q.indexOf('diag=0')>=0){ store.set('nounrally_diag','0'); return false; }
-    return store.get('nounrally_diag')==='1';
-  })();
+  // 出すのは URL に ?diag=1 が付いているときだけ。保存はしない。
+  //
+  // 以前は localStorage に残し、アプリ起動で崩れていたら自動でも出していた。
+  // 意図は「余計な手間なく数字を取る」だったが、実際には逆になった ―
+  //   ・一度 ?diag=1 で開くと消すのに ?diag=0 がもう一度要る
+  //   ・アプリとSafariで保存領域が別なので、片方を消しても残る
+  //   ・プライベートウィンドウでは保存できず、挙動が読めない
+  // 調べるための道具が、調べる邪魔をしていた。URLを閉じれば必ず消える形にする
+  const DIAG = location.search.indexOf('diag=1') >= 0;
   const svhProbe=document.createElement('div');
   svhProbe.style.cssText='position:fixed;top:0;left:0;width:0;height:100svh;'+
     'visibility:hidden;pointer-events:none;';
@@ -1390,13 +1390,7 @@ addEventListener('unhandledrejection', function(e){
     const m=q=>matchMedia(q).matches?1:0;
     const app=navigator.standalone?1:m('(display-mode:standalone)');
     diagN++; if(over>diagWorst) diagWorst=over;
-    // 自動表示は「いま実際にはみ出している」ときだけにする。起動直後に一瞬だけ
-    // 崩れて自力で直った場合に赤い帯が出っぱなしになると、直っているのに
-    // 壊れて見える。?diag=1 のときは収まっていても出す（最悪値を読みたいので）
-    if(!DIAG && !(app && over>1)){
-      if(crash.dataset.owner==='layout') crash.hidden=true;
-      return;
-    }
+    if(!DIAG) return;
     crash.dataset.owner='layout';
     crash.textContent=(over>1?'NG はみ出し':'OK 収まっている')
       +' 右'+overR+' 下'+overB+' 左'+overL+' 上'+overT
