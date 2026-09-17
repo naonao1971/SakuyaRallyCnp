@@ -641,7 +641,7 @@ const SPD_DRY    = 1.75;    // 1.4  * 1.25  燃料切れ後。敵より遅い
 | **F13** | クリア時にショート動画（**ゴールしたときだけ**） | 着手前に決めることあり |
 | **F14** | **岩を本家ラリーXの挙動にする** | **仕様確定・実装は保留** |
 | **B1** | **ポーズが効かない**（公開版のみ。B2と同根の疑い） | **未着手・B2のあと** |
-| **B2** | **画面が勝手に拡大する**（公開版のみ） | **未着手・これを先に** |
+| **B2** | **画面が勝手に拡大する**（公開版のみ） | **直した（実機での確認待ち）** |
 | **B3** | **アイコンが姉妹作の飛行機のまま** | **未着手** |
 | **B4** | **アプリ化すると画面に収まらない**（公開版のみ） | **未着手・B2とは独立** |
 | — | レア度（姉妹作の `CNP_TIERS` 相当）。ラリー側は11体とも同格 | 未着手 |
@@ -736,28 +736,44 @@ const tap = !!joy && joy.onPause && !joy.dir
 **再現環境の注意:** headless Chromium ではこの不具合は出ない。**iOS Safari の
 トップレベルのページでしか起きない。** 手元のテストが通っていたのはそのため。
 
-#### B2 画面が勝手に拡大する
+#### B2 画面が勝手に拡大する（対処済み・実機での確認待ち）
 
 タップして操作していると画面がズームすることがある。
 
 **`user-scalable=no` は iOS Safari では効かない**（iOS 10 以降、意図的に無視される）。
-ラリーはビューポートの指定しか持っておらず、**ズームを打ち消すコードが1つも無い**
+ラリーはビューポートの指定しか持っておらず、**ズームを打ち消すコードが1つも無かった**
 （`gesturestart` / `gesturechange` / `touchmove` のハンドラが 0 件）。
 
-姉妹作（咲耶スクランブル）には対策が入っている。移植すればよい。
+**iOS のピンチズームは `touch-action:none` では止まらない。** WebKit独自の
+`gesture*` イベント経由で起きるので、明示的に打ち消す必要がある。姉妹作から移植した。
 
 ```js
-["gesturestart","gesturechange","gestureend"].forEach(type=>{
-  document.addEventListener(type, e=>{ if(プレイ中) e.preventDefault(); });
-});
-// 上に対応しないブラウザ向けの保険。2本指の動きそのものを打ち消す
-document.addEventListener("touchmove", e=>{
-  if(プレイ中 && e.touches.length > 1) e.preventDefault();
-}, { passive:false });
+const zoomLock = () => state==='play';
+for(const type of ['gesturestart','gesturechange','gestureend']){
+  document.addEventListener(type, e=>{ if(zoomLock()) e.preventDefault(); });
+}
+// gesture* を持たないブラウザ向けの保険。2本指の動きそのものを打ち消す。
+// passive:false を明示しないと preventDefault が無視される
+document.addEventListener('touchmove', e=>{
+  if(zoomLock() && e.touches.length>1) e.preventDefault();
+}, {passive:false});
 ```
 
-**プレイ中だけ打ち消すこと。** タイトルやランキングを見ているときはズームできる
-ままにしておく（文字を拡大して読みたい人のため）。姉妹作もそうしている。
+**打ち消すのは走っている間だけにすること。** スタート画面とリザルトには文字が多い
+ので、拡大して読みたい人のためにズームできるままにしておく（姉妹作と同じ方針）。
+
+**ポーズ中も走行中と同じ扱いにすること。** ここでズームを許すと、拡大したまま
+再開されて元の木阿弥になる。
+
+**1本指の `touchmove` は絶対に打ち消さないこと。** スティックがそれで動いている。
+
+**ビューポートの指定は変えていない。** `maximum-scale=1,user-scalable=no` は iOS では
+無視されるので消しても iOS の挙動は変わらないが、Android では効いているため、
+消すとそちらのズーム可否が変わる。手元で確認できない変更なので触らなかった。
+
+**確認方法の限界:** `gesture*` は WebKit 独自で、**Chromium は発火しない**。手元では
+イベントを自分で `dispatchEvent` して「自分のリスナーが打ち消すか」までしか確かめ
+られない。**実際にピンチが止まるかは実機でしか分からない。**
 
 #### B4 アプリ化（ホーム画面に追加）すると画面に収まらない
 
