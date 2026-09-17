@@ -1338,10 +1338,15 @@ addEventListener('unhandledrejection', function(e){
   // 数字を見るまで原因を勘で決めないこと。safe-area だと思って余白を足しても、
   // viewport-fit=cover を指定していない今は env(safe-area-inset-*) が全部 0 なので
   // 何も変わらない ― 引くものが無い
-  // 既定は黙らせる。公開サイトの利用者に赤い帯を見せないため。
-  //   ?diag=1 を付けて開くと有効（localStorage に残るので、その状態で
-  //   ホーム画面に追加すればアプリ化しても効いたまま）
-  //   ?diag=0 で解除
+  // ---- はみ出しの自己申告（B4の計測）----
+  // 「起動直後だけ崩れていて、何か触ると直ることがある」という証言があるので、
+  // 1回きりではなく何度も測り、そのつど最新の値に書き換える。
+  // 直った瞬間の値も見えるようにしておくこと（崩れている値だけでは、
+  // どちらが正しい画面サイズなのか分からない）
+  //
+  //   既定      : アプリ(スタンドアロン)起動で、実際にはみ出したときだけ出す
+  //   ?diag=1   : 収まっていても常に出す（localStorage に残る）
+  //   ?diag=0   : 解除
   const DIAG=(()=>{
     const q=location.search;
     if(q.indexOf('diag=1')>=0){ store.set('nounrally_diag','1'); return true; }
@@ -1352,31 +1357,43 @@ addEventListener('unhandledrejection', function(e){
   svhProbe.style.cssText='position:fixed;top:0;left:0;width:0;height:100svh;'+
     'visibility:hidden;pointer-events:none;';
   document.body.appendChild(svhProbe);
-  function layoutReport(){
-    if(!DIAG) return;
+  let diagN=0, diagWorst=0;
+  function layoutReport(tag){
     const crash=document.getElementById('crash');
-    if(!crash || !crash.hidden) return;   // 本物のエラーが出ていたらそちらを優先
+    if(!crash) return;
+    // 本物のエラーが出ていたらそちらを優先（帯は1本しかない）
+    if(!crash.hidden && crash.dataset.owner!=='layout') return;
     // 測るのは #play(コースと右列)。#wrap だと見出しやフッターのはみ出しまで
     // 拾ってしまい、遊ぶのに支障が無い場面でも鳴る
     const r=document.getElementById('play').getBoundingClientRect();
     const overR=Math.round(r.right-innerWidth),  overB=Math.round(r.bottom-innerHeight);
     const overL=Math.round(-r.left),             overT=Math.round(-r.top);
-    if(Math.max(overR,overB,overL,overT) <= 1) return;
+    const over=Math.max(overR,overB,overL,overT);
     const m=q=>matchMedia(q).matches?1:0;
-    crash.textContent='LAYOUT はみ出し 右'+overR+' 下'+overB+' 左'+overL+' 上'+overT
+    const app=navigator.standalone?1:m('(display-mode:standalone)');
+    diagN++; if(over>diagWorst) diagWorst=over;
+    if(!(DIAG || (app && diagWorst>1))){ return; }
+    crash.dataset.owner='layout';
+    crash.textContent=(over>1?'NG はみ出し':'OK 収まっている')
+      +' 右'+overR+' 下'+overB+' 左'+overL+' 上'+overT
       +' / 画面'+innerWidth+'x'+innerHeight
       +' svh'+svhProbe.offsetHeight
+      +' 外'+(window.outerWidth||0)+'x'+(window.outerHeight||0)
       +' dpr'+(window.devicePixelRatio||0)
       +' / 横'+m('(orientation:landscape)')
       +' 高600以下'+m('(max-height:600px)')
       +' hover'+m('(hover:hover)')
       +' fine'+m('(pointer:fine)')
-      +' アプリ'+(navigator.standalone?1:m('(display-mode:standalone)'));
+      +' アプリ'+app
+      +' / 最悪'+diagWorst+' #'+diagN+' '+(tag||'');
     crash.hidden=false;
   }
-  addEventListener('resize',()=>setTimeout(layoutReport,200));
-  addEventListener('orientationchange',()=>setTimeout(layoutReport,400));
-  setTimeout(layoutReport,300);
+  // 起動直後に何度も測る。崩れが一瞬で直る場合も、ずっと残る場合も取りこぼさない
+  for(const ms of [0,100,300,600,1200,2500,5000]) setTimeout(()=>layoutReport('t'+ms),ms);
+  addEventListener('resize',          ()=>setTimeout(()=>layoutReport('resize'),200));
+  addEventListener('orientationchange',()=>setTimeout(()=>layoutReport('rotate'),400));
+  // 「何か触ったら直った」を捕まえる。指を離すたびに測り直す
+  addEventListener('pointerup',       ()=>setTimeout(()=>layoutReport('tap'),120));
 
   // idle preview
   grid=genMaze(); player=mkCar(1.5*TILE,1.5*TILE,C.player,false);
