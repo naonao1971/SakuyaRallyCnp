@@ -1411,6 +1411,18 @@ addEventListener('unhandledrejection', function(e){
   svhProbe.style.cssText='position:fixed;top:0;left:0;width:0;height:100svh;'+
     'visibility:hidden;pointer-events:none;';
   document.body.appendChild(svhProbe);
+  // セーフエリア(ノッチ/ホームインジケータ)の逃げ幅を JS から読むためのプローブ。
+  // viewport-fit=cover を指定していない今は 0 が返るはずで、0 でなければ
+  // ビューポート自体がずらされていることの裏付けになる
+  const saProbe=document.createElement('div');
+  saProbe.style.cssText='position:fixed;top:0;left:0;width:0;height:0;'+
+    'visibility:hidden;pointer-events:none;'+
+    'padding:env(safe-area-inset-top,0px) env(safe-area-inset-right,0px)'+
+    ' env(safe-area-inset-bottom,0px) env(safe-area-inset-left,0px);';
+  document.body.appendChild(saProbe);
+  const saRead=()=>{ const c=getComputedStyle(saProbe);
+    return [c.paddingTop,c.paddingRight,c.paddingBottom,c.paddingLeft]
+      .map(v=>Math.round(parseFloat(v)||0)).join('/'); };
   let diagN=0, diagWorst=0;
   function layoutReport(tag){
     const crash=document.getElementById('crash');
@@ -1438,6 +1450,8 @@ addEventListener('unhandledrejection', function(e){
                 +'@'+(visualViewport.scale||1).toFixed(2):'-')
       +' cl'+document.documentElement.clientWidth+'x'+document.documentElement.clientHeight
       +' dpr'+(window.devicePixelRatio||0)
+      +' 逃げ'+saRead()
+      +' / 版'+(ovbuild.textContent||'?').replace('更新 ','')
       +' / 横'+m('(orientation:landscape)')
       +' 高600以下'+m('(max-height:600px)')
       +' hover'+m('(hover:hover)')
