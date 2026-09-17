@@ -291,11 +291,29 @@ function showErr(msg,line,file){
 addEventListener('error', function(e){
   showErr((e.error&&e.error.message)||e.message||String(e), e.lineno, e.filename);
 });
-// 画面の高さを実測して --vh に入れる。CSS の 100svh は iOS のホーム画面起動で
-// 実際より大きい値を返すことがある（実測 390px / 実際 343px）。
+// 画面の高さを実測して --vh に入れる。
+//
+// iOS のホーム画面アプリでは、レイアウトの箱が画面の上端から下へずらして
+// 置かれることがある（実測: 47px。ノッチの逃げ幅と同じ）。ところが
+// innerHeight も 100svh も、そのずれを差し引かずに 390 を返してくる。
+// env(safe-area-inset-*) は viewport-fit=cover を指定していないと 0 なので
+// そちらからも読めない（実測: 逃げ0/0/0/0）。
+//
+// そこで html の位置を実測して、ずれた分を引く。
+//   使える高さ = innerHeight - (html の上端がビューポート座標でどこにあるか)
+// ふつうの環境では上端は 0 なので、引き算は何もしない。
 // 本体より前に置くこと ― 最初の描画からズレていない値で組ませる
+function vhOffset(){
+  try{
+    var r=document.documentElement.getBoundingClientRect();
+    return (r && r.top>0.5) ? r.top : 0;
+  }catch(e){ return 0; }
+}
 function setVH(){
-  try{ document.documentElement.style.setProperty('--vh', window.innerHeight+'px'); }catch(e){}
+  try{
+    var h=window.innerHeight-vhOffset();
+    if(h>80) document.documentElement.style.setProperty('--vh', Math.round(h)+'px');
+  }catch(e){}
 }
 setVH();
 addEventListener('resize', setVH);
@@ -1451,6 +1469,7 @@ addEventListener('unhandledrejection', function(e){
       +' cl'+document.documentElement.clientWidth+'x'+document.documentElement.clientHeight
       +' dpr'+(window.devicePixelRatio||0)
       +' 逃げ'+saRead()
+      +' 原点'+Math.round(document.documentElement.getBoundingClientRect().top)
       +' / 版'+(ovbuild.textContent||'?').replace('更新 ','')
       +' / 横'+m('(orientation:landscape)')
       +' 高600以下'+m('(max-height:600px)')
