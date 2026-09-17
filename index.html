@@ -252,16 +252,28 @@
 // 黙って死ぬと原因が分からないので、必ず画面に出す
 // 出すのは「最初のエラー」。2件目以降は1件目で死んだ巻き添えで、
 // 原因から遠ざかる（実際、真因は bgmOn なのに state の方を表示して追いかけた）
+//
+// 出どころも必ず一緒に出すこと。このページは外部のスクリプトを一切読んでいない
+// （画像もアイコンも同一オリジン、script は2つともインライン）ので、
+// ファイル名の無い「Script error.」はこのページの外から来ている ―
+// 拡張機能やコンテンツブロッカーが注入したスクリプトの類。ゲームの不具合ではない。
+// 出どころを書かずに出していたため、無関係のエラーでゲームが壊れて見えていた
 var firstErr=null, errCount=0;
-function showErr(msg,line){
+function showErr(msg,line,file){
   errCount++;
-  if(firstErr===null) firstErr='ERROR: '+msg+(line?' @'+line:'');
+  if(firstErr===null){
+    var where = file ? String(file).split('/').pop().split('?')[0] : '';
+    var outside = !where && /Script error/i.test(String(msg));
+    firstErr='ERROR: '+(outside?'［このページ外］':'')+msg
+      +(where?' '+where:'')+(line?' @'+line:'');
+  }
   var d=document.getElementById('crash'); if(!d) return;
   d.textContent=firstErr+(errCount>1?'　(以後 '+(errCount-1)+'件)':'');
+  d.dataset.owner='error';
   d.hidden=false;
 }
 addEventListener('error', function(e){
-  showErr((e.error&&e.error.message)||e.message||String(e), e.lineno);
+  showErr((e.error&&e.error.message)||e.message||String(e), e.lineno, e.filename);
 });
 // 画面の高さを実測して --vh に入れる。CSS の 100svh は iOS のホーム画面起動で
 // 実際より大きい値を返すことがある（実測 390px / 実際 343px）。
@@ -275,7 +287,7 @@ addEventListener('orientationchange', function(){ setTimeout(setVH,300); });
 // 起動直後は値が落ち着かないことがあるので、しばらく測り直す
 [100,300,600,1200,2500].forEach(function(ms){ setTimeout(setVH,ms); });
 addEventListener('unhandledrejection', function(e){
-  showErr('unhandled: '+((e.reason&&e.reason.message)||e.reason), 0);
+  showErr('unhandled: '+((e.reason&&e.reason.message)||e.reason), 0, '');
 });
 </script>
 <script>
