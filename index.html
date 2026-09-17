@@ -126,6 +126,13 @@
 
   /* スマホ横持ち: 高さが足りず幅が余る。高さ基準で組む。
      十字キーを廃してスティックにしたので、左右に確保する幅は 320px → 140px */
+  /* 画面の高さは 100svh だけを信じてはいけない。
+     iOS でホーム画面から起動すると、100svh が実際の表示領域より大きい値を返す
+     （実測: 表示は 343px なのに 100svh は 390px。47px の嘘）。
+     その結果レイアウトが画面からはみ出し、何かの拍子に再計算が走ると直る、
+     という掴みどころのない崩れ方をする。
+     JS が測った innerHeight を --vh に入れ、両者の小さい方を使う。
+     var() の既定値を 100svh にしてあるので、JS が走る前も従来どおり動く */
   @media (orientation:landscape) and (max-height:600px) and (hover:none){
     #wrap{width:100%;}
     h1,#hint{display:none;}          /* 高さを稼ぐ。タイトルはスタート画面に出る */
@@ -134,7 +141,7 @@
        上がってしまい、親指が届きにくくなる */
     /* 左の余白は詰め、余った横幅は右列へ回す */
     #play{flex-direction:row;align-items:stretch;justify-content:flex-start;gap:10px;
-      height:calc(100svh - 26px);padding-left:10px;}
+      height:calc(min(100svh, var(--vh, 100svh)) - 26px);padding-left:10px;}
     #stage{order:1;align-self:center;flex:0 0 auto;}
     /* ステージは縮まない側なので、右列は「ステージが使えなかった余り」だけを吸う。
        横幅が制約になる端末(iPhone SE)では最小幅で止まり、ステージは削られない。
@@ -148,7 +155,7 @@
        固定分) + 6(安全代) */
     #side{order:2;justify-content:space-between;align-items:stretch;
       flex:1 1 auto;min-width:92px;
-      max-width:min(172px, calc((100svh - 102px) / 1.51));}
+      max-width:min(172px, calc((min(100svh, var(--vh, 100svh)) - 102px) / 1.51));}
     /* 画面の隅に固定で置くもの(確認用の⚙など)と重ならないよう、注意書きは
        左右に場所を空けたうえで中央に置く */
     .site-footer{padding-inline:86px;}
@@ -158,15 +165,15 @@
     /* 高さ基準にしつつ、横幅の残りでも頭打ちにする。
        140px は 右列の最小(92) + 隙間と余白(48) の見積もり */
     #stage{width:auto;box-shadow:3px 3px 0 var(--wall2);
-      height:min(calc(100svh - 34px), 420px, calc((100vw - 140px) / 1.6));}
+      height:min(calc(min(100svh, var(--vh, 100svh)) - 34px), 420px, calc((100vw - 140px) / 1.6));}
     .site-footer{margin-top:2px;font-size:9px;}
   }
   /* svh 非対応ブラウザ向けの保険 */
   @supports not (height: 100svh){
     @media (orientation:landscape) and (max-height:600px) and (hover:none){
-      #stage{height:min(calc(100vh - 34px), 420px, calc((100vw - 140px) / 1.6));}
-      #play{height:calc(100vh - 26px);}
-      #side{max-width:min(172px, calc((100vh - 102px) / 1.51));}
+      #stage{height:min(calc(min(100vh, var(--vh, 100vh)) - 34px), 420px, calc((100vw - 140px) / 1.6));}
+      #play{height:calc(min(100vh, var(--vh, 100vh)) - 26px);}
+      #side{max-width:min(172px, calc((min(100vh, var(--vh, 100vh)) - 102px) / 1.51));}
     }
   }
 
@@ -256,6 +263,17 @@ function showErr(msg,line){
 addEventListener('error', function(e){
   showErr((e.error&&e.error.message)||e.message||String(e), e.lineno);
 });
+// 画面の高さを実測して --vh に入れる。CSS の 100svh は iOS のホーム画面起動で
+// 実際より大きい値を返すことがある（実測 390px / 実際 343px）。
+// 本体より前に置くこと ― 最初の描画からズレていない値で組ませる
+function setVH(){
+  try{ document.documentElement.style.setProperty('--vh', window.innerHeight+'px'); }catch(e){}
+}
+setVH();
+addEventListener('resize', setVH);
+addEventListener('orientationchange', function(){ setTimeout(setVH,300); });
+// 起動直後は値が落ち着かないことがあるので、しばらく測り直す
+[100,300,600,1200,2500].forEach(function(ms){ setTimeout(setVH,ms); });
 addEventListener('unhandledrejection', function(e){
   showErr('unhandled: '+((e.reason&&e.reason.message)||e.reason), 0);
 });
@@ -1366,6 +1384,7 @@ addEventListener('unhandledrejection', function(e){
     crash.textContent='LAYOUT はみ出し 右'+overR+' 下'+overB+' 左'+overL+' 上'+overT
       +' / 画面'+innerWidth+'x'+innerHeight
       +' svh'+svhProbe.offsetHeight
+      +' vh'+(getComputedStyle(document.documentElement).getPropertyValue('--vh').trim()||'-')
       +' dpr'+(window.devicePixelRatio||0)
       +' / 横'+m('(orientation:landscape)')
       +' 高600以下'+m('(max-height:600px)')
