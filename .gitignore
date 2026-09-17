@@ -4,3 +4,8 @@
 .Spotlight-V100
 .Trashes
 icloud*
+
+# テスト用に生成する一時ファイル（コミットしない）
+_t.html
+twoerr.html
+broken.html
