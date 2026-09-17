@@ -69,6 +69,12 @@
   #ovsub{flex:0 0 auto;margin-top:-2px;font-size:clamp(9px,2.2vh,11px);
     letter-spacing:.24em;opacity:.5;}
   #ovsub.hidden{display:none;}
+  /* どのビルドを見ているかを画面から分かるようにする。
+     「直したのに変わらない」と言われたとき、古いものを見ているのか直って
+     いないのかが区別できず何度も往復した。document.lastModified はサーバが
+     返す更新日時なので、ビルド手順を足さずに版が分かる */
+  #ovbuild{flex:0 0 auto;margin-top:-4px;font-size:9px;letter-spacing:.06em;opacity:.32;}
+  #ovbuild.hidden{display:none;}
   #ov p{flex:0 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;
     font-size:clamp(11px,2.8vh,13px);opacity:.85;line-height:1.6;}
   #btn{flex:0 0 auto;margin-top:4px;font:inherit;font-weight:800;letter-spacing:.1em;padding:9px 20px;
@@ -207,6 +213,7 @@
       <div id="ov">
         <h2 id="ovt">咲耶<span class="g">Noun</span>ラリー</h2>
         <div id="ovsub">SakuyaNounRally</div>
+        <div id="ovbuild"></div>
         <p id="ovp">CNP11体を集めて、出口へ戻れ。通った跡が得点。<br>車は止まらない ― 曲がる方向だけ決める。<br>壁に当たると自動で右へ。行き止まりだけ跳ね返る。<br>赤い車に触れるとクラッシュ。車は3台。<br>SMOKE で敵はスピン。ただし燃料を多く食う。<br>燃料が尽きると減速し、8秒で力尽きる。<br><br>スマホ: 画面を押したまま倒す<br>PC: 矢印/WASD ・ Space=煙 ・ M=音 ・ P=一時停止</p>
         <button id="btn">START</button>
       </div>
@@ -284,6 +291,13 @@ addEventListener('unhandledrejection', function(e){
   const VW=cv.width, VH=cv.height;
   const ov=document.getElementById('ov'), ovt=document.getElementById('ovt'), ovp=document.getElementById('ovp'), btn=document.getElementById('btn');
   const ovsub=document.getElementById('ovsub');
+  const ovbuild=document.getElementById('ovbuild');
+  try{
+    const d=new Date(document.lastModified);
+    ovbuild.textContent = isNaN(d) ? '' :
+      '更新 '+d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2)
+      +' '+('0'+d.getHours()).slice(-2)+':'+('0'+d.getMinutes()).slice(-2);
+  }catch(e){}
   // 縦持ちではゲームを止め、タイトルと遊び方の画面を出す。
   // 判定をイベント任せにしないこと。iOS Safari の orientationchange はビューポート
   // (=メディアクエリ)の更新より先に発火することがあり、その時点の古い値で固定すると
@@ -1215,6 +1229,7 @@ addEventListener('unhandledrejection', function(e){
     beep(150,.28,'sawtooth',.06);
     ovt.textContent=title;
     ovsub.classList.add('hidden');   // タイトルの英語表記はスタート画面だけ
+    ovbuild.classList.add('hidden');
     ovp.innerHTML=sub+'<br><br>車は止まらない。曲がる方向だけ決める。<br>壁に当たると自動で右へ。行き止まりは跳ね返る。<br>SMOKE は燃料を多く食う ― 使いどころ注意。';
     btn.textContent='RETRY'; ov.classList.remove('hidden');
     resetPause(false);
@@ -1398,6 +1413,9 @@ addEventListener('unhandledrejection', function(e){
       +' svh'+svhProbe.offsetHeight
       +' vh'+(getComputedStyle(document.documentElement).getPropertyValue('--vh').trim()||'-')
       +' 外'+(window.outerWidth||0)+'x'+(window.outerHeight||0)
+      +' 可視'+(window.visualViewport?Math.round(visualViewport.width)+'x'+Math.round(visualViewport.height)
+                +'@'+(visualViewport.scale||1).toFixed(2):'-')
+      +' cl'+document.documentElement.clientWidth+'x'+document.documentElement.clientHeight
       +' dpr'+(window.devicePixelRatio||0)
       +' / 横'+m('(orientation:landscape)')
       +' 高600以下'+m('(max-height:600px)')
