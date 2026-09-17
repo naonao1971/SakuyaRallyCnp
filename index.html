@@ -139,7 +139,7 @@
      という掴みどころのない崩れ方をする。
      JS が測った innerHeight を --vh に入れ、両者の小さい方を使う。
      var() の既定値を 100svh にしてあるので、JS が走る前も従来どおり動く */
-  @media (orientation:landscape) and (max-height:600px) and (hover:none){
+  @media (orientation:landscape) and (hover:none){
     /* iOS のホーム画面アプリでは html,body{height:100%} が実際の表示領域より
        大きい値を返すことがある。実測(iPhone 縦横 844x390 のアプリ起動):
          画面390 svh390 cl390 ―― CSS が見ている高さは全部 390 で正しい
@@ -183,9 +183,24 @@
       height:min(calc(min(100svh, var(--vh, 100svh)) - 34px), 420px, calc((100vw - 140px) / 1.6));}
     .site-footer{margin-top:2px;font-size:9px;}
   }
+  /* タブレットの横持ち（背が高い）。スマホ用の作りをそのまま伸ばすと、
+     右列が画面の高さいっぱいに引き伸ばされて立ち絵・レーダー・SMOKE が
+     バラバラに散り、さらに右側に大きな余白が残る（実測 1133x744 で 270px）。
+     ここでは「行の高さをステージに合わせ、横は中央に寄せる」に切り替える。
+     601px の境目は、スマホの横持ちが最大でも 430px 程度であることから */
+  @media (orientation:landscape) and (min-height:601px) and (hover:none){
+    /* 高さはステージが決める。右列はそれに合わせて伸びる（align-items:stretch）*/
+    #play{height:auto;justify-content:center;align-items:stretch;padding-left:0;}
+    /* 画面が広いのでステージを大きく取る。220 = 右列200 + 隙間と余白20 */
+    #stage{height:min(calc(min(100svh, var(--vh, 100svh)) - 60px), 760px,
+      calc((100vw - 220px) / 1.6));}
+    #side{max-width:200px;}
+    /* 背が高いぶん上下に余白が出るので、見出しを出して上を埋める */
+    h1{display:block;margin-bottom:10px;}
+  }
   /* svh 非対応ブラウザ向けの保険 */
   @supports not (height: 100svh){
-    @media (orientation:landscape) and (max-height:600px) and (hover:none){
+    @media (orientation:landscape) and (hover:none){
       #stage{height:min(calc(min(100vh, var(--vh, 100vh)) - 34px), 420px, calc((100vw - 140px) / 1.6));}
       #play{height:calc(min(100vh, var(--vh, 100vh)) - 26px);}
       #side{max-width:min(172px, calc((min(100vh, var(--vh, 100vh)) - 102px) / 1.51));}
@@ -644,7 +659,7 @@ addEventListener('unhandledrejection', function(e){
     exitCell=farthestCell(grid); exitOpen=false;
     placePlayer();
     resetPause(true);
-    state='play'; ov.classList.add('hidden'); last=performance.now();
+    state='play'; ov.classList.add('hidden'); resync=true;
     cancelAnimationFrame(rafId); rafId=requestAnimationFrame(loop);
     bgmStart();
   }
@@ -753,8 +768,8 @@ addEventListener('unhandledrejection', function(e){
       joy=null; ring.classList.remove('on'); knob.classList.remove('on');
       bgmStop();
     }else{
-      // 止めていた間の時間が dt にまとめて乗らないよう、時計を今に合わせる
-      last=performance.now(); bgmStart();
+      // 止めていた間の時間が dt にまとめて乗らないよう、時計を合わせ直す
+      resync=true; bgmStart();
     }
   }
   function resetPause(show){
@@ -768,7 +783,13 @@ addEventListener('unhandledrejection', function(e){
   // 呼ぶと二本目のループが立ち上がり、update() が毎フレーム2回走る＝2倍速に
   // なる。いまは RETRY ボタンが隠れている間は押せないので実機では起きないが、
   // 一行で塞げるので塞いでおく（テストで実際に踏んだ）
-  let last, rafId=0;
+  // last は rAF が渡す now と同じ時計で持つこと。performance.now() を入れると、
+  // rAF の now は「そのフレームが始まった時刻」なので、コールバックの中で
+  // 読んだ performance.now() のほうが先に進んでいて now < last になりうる。
+  // そうなると dt がマイナスになり、自機がわずかに後退して燃料が増える
+  // （実測: 43,230フレーム中5回）。開始・ポーズ解除では時刻を入れずに
+  // resync を立て、次のフレームで now をそのまま last にする
+  let last=0, rafId=0, resync=true;
   function update(dt){
     t+=dt;
     // dt は loop() で 0.05 秒に制限済みなので k は最大 3。1フレームの移動量は
@@ -1238,7 +1259,10 @@ addEventListener('unhandledrejection', function(e){
 
   function loop(now){
     if(state!=='play') return;
-    let dt=(now-last)/1000; last=now; if(dt>.05)dt=.05;
+    if(resync){ last=now; resync=false; }   // 時計合わせ。このフレームは dt=0
+    let dt=(now-last)/1000; last=now;
+    // 上限はコマ落ち対策。下限はタイムスタンプの揺れに対する保険
+    if(dt>.05)dt=.05; else if(dt<0)dt=0;
     // 縦持ちの間は進行を止める。last は毎回更新しているので、横に戻したときに
     // 溜まった時間がまとめて進むことはない
     if(!orientationBlocked && !paused) update(dt);
