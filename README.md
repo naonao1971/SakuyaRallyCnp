@@ -897,23 +897,38 @@ const url = card.toDataURL('image/png');
 `navigator.share()` は**ユーザー操作の続き**とみなされる間しか呼べない。
 `await` で時間を使うとその窓が閉じる。**同期で作れるものは同期で作る。**
 
+### 押した結果を `?diag=1` で見えるようにしてある
+
+**iPhone で共有シートに入らない、という報告が来た。** iOS Safari は本来ファイル
+共有に対応しているので、`canShare({files})` が false になる理由が説明できない。
+**B4 で推測を3回外しているので、今度は先に測る。**
+
+```
+sharefunction csfunction csFfalse cliptrue sectrue app0 / copy 875KB
+```
+
+| 読み方 | |
+| --- | --- |
+| `share` / `cs` | `navigator.share` / `canShare` が在るか（`function` か `undefined`） |
+| **`csF`** | **`canShare({files})` の結果。`true` / `false` / `throw:名前`** |
+| `clip` `sec` `app` | クリップボード可否 / 安全なコンテキストか / アプリ起動か |
+| `/` の後 | **通った経路**（`sheet ok` / `copy` / `save`）と画像の大きさ、断られた理由 |
+
+**素のURLでは出さない。** 利用者に内部の値を見せる必要はない。
+
+判定は `location.search` をその場で見ている。`DIAG` 定数は後方で `const`
+宣言されており、ここで参照すると呼ばれる順によっては**TDZ を踏む**。
+
 ### 共有シートを閉じただけでも reject される
 
 ```js
 if(err && err.name==='AbortError'){ return; }   // やめただけ。次の手へ落とさない
 ```
 
-`AbortError` は**キャンセル**。ここで保存に落とすと、**やめた人のフォルダに
-勝手にファイルが増える。** それ以外の失敗（`NotAllowedError` 等）は次の手へ落とす。
-
-### 共有シートを閉じただけでも reject される
-
-```js
-if(err && err.name!=='AbortError'){ …エラー表示… }
-```
-
-`navigator.share()` は**ユーザーが共有シートをキャンセルしたときも `AbortError`
-で reject する。** そのまま「失敗しました」と出すと、やめただけの人を驚かせる。
+`navigator.share()` は**ユーザーがシートを閉じたときも `AbortError` で reject
+する。** ここで「失敗しました」と出したり保存に落としたりすると、**やめただけの
+人のフォルダに勝手にファイルが増える。**
+それ以外の失敗（`NotAllowedError` 等）は次の手へ落とす。
 
 ### カードの背景は途中で断ち切る
 
