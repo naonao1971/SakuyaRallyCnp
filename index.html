@@ -21,11 +21,15 @@
     --gold:#e8c56a;      /* 二次: 枠 */
   }
   *{box-sizing:border-box;margin:0;padding:0;}
-  html,body{height:100%;}
-  body{background:var(--bg);color:var(--ink);
+  html{height:100%;}
+  /* ランキング(F8)を下に置くため、ページは縦にスクロールできる必要がある。
+     height:100% だと中身がはみ出した分を切り落とすので min-height にする。
+     中央寄せもやめる ― 中身が画面より高いとき、中央寄せは上へはみ出した分が
+     スクロールで取り戻せなくなる（B4 で踏んだのと同じ形の罠） */
+  body{background:var(--bg);color:var(--ink);min-height:100%;
     font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
-    display:flex;align-items:center;justify-content:center;
-    overflow:hidden;touch-action:none;-webkit-user-select:none;user-select:none;}
+    display:flex;align-items:flex-start;justify-content:center;
+    overflow-x:hidden;-webkit-user-select:none;user-select:none;}
   #wrap{width:min(96vw,560px);}
   h1{font-size:clamp(15px,4vw,22px);letter-spacing:.14em;text-align:center;margin-bottom:6px;font-weight:800;}
   h1 .g{color:var(--pink);}
@@ -34,7 +38,11 @@
 
   /* 既定は縦積み・幅基準。PCと縦持ちはこれで足りる。
      DOM順は横並び(パッドが左)を優先しているので、縦積みでは order で並べ替える */
-  #play{display:flex;flex-direction:column;align-items:center;gap:10px;}
+  /* touch-action:none は body ではなくここに置く。スティックは canvas の
+     pointerdown でしか始まらないので、ゲーム領域だけ止めれば足りる。
+     body に置くとページ全体がスクロールできなくなり、ランキングが置けない */
+  #play{display:flex;flex-direction:column;align-items:center;gap:10px;
+    touch-action:none;}
   #stage{order:1;} #side{order:2;}
   /* 16:10。高さ側で頭打ちになる端末では 4:3 だと横幅が余っていた
      （iPhone 15 で53px、Pro Max で66px）。詳しくは README */
@@ -208,10 +216,16 @@
   }
 
   /* 縦持ちはタイトルと遊び方。ゲームは横向きでのみ遊べる */
-  #rotate{position:fixed;inset:0;z-index:50;display:none;
+  /* 縦持ちの案内。以前は position:fixed で画面全体を覆っていたが、それだと
+     下にランキングを置いてもスクロールで辿り着けない。流れの中の一区画にして、
+     ゲーム側を隠す形に変えた。最初の一画面ぶんの高さは確保する */
+  #rotate{display:none;
     flex-direction:column;align-items:center;justify-content:center;gap:10px;
-    background:var(--bg);text-align:center;padding:24px 18px;overflow-y:auto;}
-  #rotate.visible{display:flex;}
+    text-align:center;padding:24px 18px;
+    min-height:calc(min(100svh, var(--vh, 100svh)) - 40px);}
+  body.portrait #rotate{display:flex;}
+  /* 縦持ちではゲーム本体を出さない。見出しは #rotate が自前で持っている */
+  body.portrait h1, body.portrait #play, body.portrait #hint{display:none;}
   #rotate img{width:min(100%,420px);border-radius:8px;border:2px solid rgba(232,197,106,.45);}
   #rotate h2{font-size:clamp(17px,5.2vw,24px);letter-spacing:.08em;}
   #rotate h2 .g{color:var(--pink);}
@@ -230,6 +244,20 @@
 <div id="wrap">
   <h1>咲耶<span class="g">Noun</span>ラリー <span class="g">&#x2310;&#x25E8;-&#x25E8;</span>
     <span class="en">SakuyaNounRally</span> <span class="ver">proto v4</span></h1>
+<!-- 縦持ちの画面。タイトルと遊び方を見せ、遊ぶには横向きへ促す -->
+  <div id="rotate" role="alert" aria-live="assertive">
+    <img src="assets/rally_title.jpg" alt="ラリーカーを運転する咲耶とノグルズのナビゲーター">
+    <h2>咲耶<span class="g">Noun</span>ラリー <span class="g">&#x2310;&#x25E8;-&#x25E8;</span></h2>
+    <p class="en">SakuyaNounRally</p>
+    <p class="how">迷路に散らばった CNP 11体を全部回収し、出口へ戻れ。<br>
+      通った跡は得点になる。<br>
+      車は止まらない ― 決められるのは曲がる方向だけ。<br>
+      赤い敵車に触れるとクラッシュ。車は3台まで。<br>
+      SMOKE でスピンさせられるが、燃料を多く食う。燃料が尽きると減速し、やがて力尽きる。</p>
+    <div class="icon">📱⤴</div>
+    <p class="turn">横向きにしてください</p>
+    <p class="note">本作は CryptoNinja / CryptoNinja Partners の非公式ファンアートです</p>
+  </div>
   <div id="play">
     <div id="stage">
       <canvas id="c" width="614" height="384"></canvas>
@@ -263,20 +291,6 @@
 <div id="joyring" aria-hidden="true"></div>
 <div id="joyknob" aria-hidden="true"></div>
 
-<!-- 縦持ちの画面。タイトルと遊び方を見せ、遊ぶには横向きへ促す -->
-<div id="rotate" role="alert" aria-live="assertive">
-  <img src="assets/rally_title.jpg" alt="ラリーカーを運転する咲耶とノグルズのナビゲーター">
-  <h2>咲耶<span class="g">Noun</span>ラリー <span class="g">&#x2310;&#x25E8;-&#x25E8;</span></h2>
-  <p class="en">SakuyaNounRally</p>
-  <p class="how">迷路に散らばった CNP 11体を全部回収し、出口へ戻れ。<br>
-    通った跡は得点になる。<br>
-    車は止まらない ― 決められるのは曲がる方向だけ。<br>
-    赤い敵車に触れるとクラッシュ。車は3台まで。<br>
-    SMOKE でスピンさせられるが、燃料を多く食う。燃料が尽きると減速し、やがて力尽きる。</p>
-  <div class="icon">📱⤴</div>
-  <p class="turn">横向きにしてください</p>
-  <p class="note">本作は CryptoNinja / CryptoNinja Partners の非公式ファンアートです</p>
-</div>
 <script>
 // 本体より先に登録すること。初期化の途中で例外が出ると、以降の
 // addEventListener が1つも走らず「STARTを押しても何も起きない」板になる。
@@ -320,6 +334,10 @@ addEventListener('error', function(e){
 // 本体より前に置くこと ― 最初の描画からズレていない値で組ませる
 function vhOffset(){
   try{
+    // ページがスクロールできるようになったので、スクロール中は rect.top が
+    // 負に振れる。ずれの実測は先頭にいるときだけ信じる
+    var y=window.pageYOffset||document.documentElement.scrollTop||0;
+    if(y>0.5) return 0;
     var r=document.documentElement.getBoundingClientRect();
     return (r && r.top>0.5) ? r.top : 0;
   }catch(e){ return 0; }
@@ -366,6 +384,7 @@ addEventListener('unhandledrejection', function(e){
     if(should===orientationBlocked) return;
     orientationBlocked=should;
     rotateEl.classList.toggle('visible', should);
+    document.body.classList.toggle('portrait', should);
     // 縦持ちの間は進行が止まるので、BGMも止める
     // booted で守ること。この関数は state / bgmOn より前に定義されているので、
     // 初期化が終わる前に呼ぶと let の TDZ で落ちる ― しかも落ちた先が
@@ -1473,7 +1492,9 @@ addEventListener('unhandledrejection', function(e){
     if(!crash.hidden && crash.dataset.owner!=='layout') return;
     // 測るのは #play(コースと右列)。#wrap だと見出しやフッターのはみ出しまで
     // 拾ってしまい、遊ぶのに支障が無い場面でも鳴る
-    const r=document.getElementById('play').getBoundingClientRect();
+    const playEl=document.getElementById('play');
+    const r=playEl.getBoundingClientRect();
+    if(!r.width && !r.height) return;   // 縦持ちで隠れている間は測らない
     const overR=Math.round(r.right-innerWidth),  overB=Math.round(r.bottom-innerHeight);
     const overL=Math.round(-r.left),             overT=Math.round(-r.top);
     const over=Math.max(overR,overB,overL,overT);
