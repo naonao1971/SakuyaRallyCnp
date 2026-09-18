@@ -4,9 +4,28 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <title>咲耶Nounラリー ⌐◨-◨ (proto v4)</title>
+<meta name="description" content="迷路に散らばった CNP 11体を集めて出口へ戻る、ラリーX系のブラウザゲーム。通った跡が得点になる。">
+<!-- SNS に貼ったときの見え方（OGP / Twitter Card）。
+     og:url と og:image は仕様上「絶対URL」でなければならないので、
+     独自ドメインが決まるまで書けずにいた。CNAME の rally.naoblock.jp に合わせる。
+     ドメインを変えるときは、この4か所（og:url / og:image / twitter:image）も
+     必ず一緒に直すこと。相対パスにすると多くのSNSで画像が出ない -->
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="咲耶Nounラリー">
+<meta property="og:title" content="咲耶Nounラリー / SakuyaNounRally">
+<meta property="og:description" content="迷路に散らばった CNP 11体を集めて出口へ戻る、ラリーX系のブラウザゲーム。通った跡が得点になる。">
+<meta property="og:url" content="https://rally.naoblock.jp/">
+<meta property="og:image" content="https://rally.naoblock.jp/assets/rally_title.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="674">
+<meta property="og:image:alt" content="ラリーカーを運転する咲耶と、地図を広げるノグルズのナビゲーター">
+<meta property="og:locale" content="ja_JP">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="咲耶Nounラリー / SakuyaNounRally">
+<meta name="twitter:description" content="迷路に散らばった CNP 11体を集めて出口へ戻る、ラリーX系のブラウザゲーム。通った跡が得点になる。">
+<meta name="twitter:image" content="https://rally.naoblock.jp/assets/rally_title.jpg">
 <!-- アイコンを明示しないとブラウザが /favicon.ico を自動で取りに行き、404になる。
-     apple-touch-iconは「ホーム画面に追加」でiOSが使う。
-     どちらも咲耶スクランブルと同じものを流用している -->
+     apple-touch-iconは「ホーム画面に追加」でiOSが使う -->
 <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png" />
 <link rel="apple-touch-icon" href="apple-touch-icon.png" />
 <style>
@@ -216,16 +235,62 @@
   }
 
   /* 縦持ちはタイトルと遊び方。ゲームは横向きでのみ遊べる */
+  /* --- ランキング（F8）--- */
+  /* GAS_URL が空のときは JS が hidden を付けたままにする。未設定のまま
+     公開しても、空の枠だけが出る状態にはならない */
+  #rank{margin-top:18px;padding:14px 12px 18px;border-top:1px solid rgba(232,197,106,.22);}
+  #rank[hidden]{display:none;}
+  .rank-title{font-size:13px;letter-spacing:.14em;text-align:center;
+    color:var(--gold);margin-bottom:10px;font-weight:800;}
+  #ranklist{list-style:none;display:flex;flex-direction:column;gap:4px;}
+  .rank-row{display:grid;grid-template-columns:28px 1fr auto auto;align-items:center;
+    gap:8px;padding:6px 8px;border-radius:6px;background:rgba(242,233,239,.04);
+    font-size:11.5px;}
+  .rank-row.me{background:rgba(232,197,106,.14);}
+  .rank-no{text-align:center;font-weight:800;opacity:.8;}
+  .rank-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .rank-x{display:flex;align-items:center;gap:4px;font-size:10px;opacity:.7;}
+  .rank-x img{width:16px;height:16px;border-radius:50%;}
+  .rank-x a{color:inherit;text-decoration:none;}
+  .rank-sc{font-weight:800;color:var(--gold);font-variant-numeric:tabular-nums;}
+  /* 踏破率・回収CNP・クリアは2行目に小さく。1行に詰めると狭い画面で崩れる */
+  .rank-sub{grid-column:2 / -1;font-size:9.5px;opacity:.45;letter-spacing:.04em;}
+  .rank-empty{text-align:center;font-size:11px;opacity:.45;padding:10px;}
+  /* 登録フォーム。TOP10 に入ったときだけ出す */
+  #rankform{display:none;flex-direction:column;gap:7px;align-items:stretch;
+    margin-bottom:14px;padding:12px;border-radius:8px;
+    background:rgba(232,197,106,.08);border:1px solid rgba(232,197,106,.3);}
+  #rankform.show{display:flex;}
+  .rank-msg{font-size:12px;text-align:center;color:var(--gold);font-weight:800;}
+  #rankform input{font:inherit;font-size:13px;padding:8px 10px;border-radius:6px;
+    border:1px solid rgba(242,233,239,.25);background:rgba(21,15,26,.6);color:var(--ink);}
+  #rankform input::placeholder{color:rgba(242,233,239,.35);}
+  #ranksend{font:inherit;font-size:13px;font-weight:800;padding:9px;border-radius:6px;
+    border:none;background:var(--pink);color:#1a1020;cursor:pointer;}
+  #ranksend:disabled{opacity:.4;cursor:default;}
+  #rankxidp{display:none;align-items:center;gap:6px;font-size:10.5px;line-height:1.5;}
+  #rankxidp.show{display:flex;}
+  #rankxidp.ng{color:#ff9a9a;}
+  #rankxidp.ok{color:#9ae6b4;}
+  #rankxidp img{width:20px;height:20px;border-radius:50%;}
+  #rankstat{font-size:10.5px;opacity:.7;text-align:center;min-height:1em;}
+
   /* 縦持ちの案内。以前は position:fixed で画面全体を覆っていたが、それだと
      下にランキングを置いてもスクロールで辿り着けない。流れの中の一区画にして、
      ゲーム側を隠す形に変えた。最初の一画面ぶんの高さは確保する */
   #rotate{display:none;
     flex-direction:column;align-items:center;justify-content:center;gap:10px;
     text-align:center;padding:24px 18px;
-    min-height:calc(min(100svh, var(--vh, 100svh)) - 40px);}
+    /* ぴったり一画面にすると下に続くことが分からない。少しだけ短くして
+       ランキングの見出しが画面の下端から覗くようにする */
+    min-height:calc(min(100svh, var(--vh, 100svh)) - 110px);}
   body.portrait #rotate{display:flex;}
   /* 縦持ちではゲーム本体を出さない。見出しは #rotate が自前で持っている */
   body.portrait h1, body.portrait #play, body.portrait #hint{display:none;}
+  /* #rotate が自前で非公式表記を持っているので、縦持ちでは下のフッターを消す。
+     置いたままだと同じ文が二度出る（固定オーバーレイだった頃は隠れていた）。
+     ランキングより上、最初の一画面で読めるほうがガイドライン的にも良い */
+  body.portrait .site-footer{display:none;}
   #rotate img{width:min(100%,420px);border-radius:8px;border:2px solid rgba(232,197,106,.45);}
   #rotate h2{font-size:clamp(17px,5.2vw,24px);letter-spacing:.08em;}
   #rotate h2 .g{color:var(--pink);}
@@ -282,6 +347,20 @@
   <div id="hint">proto v4 ・ CNP11体は咲耶スクランブルと同じ正式アート＋正式名 ・ 自機は ⌐◨-◨ カー</div>
   <!-- ガイドラインの「公式を騙らない」に対応する表記。タイトルにIP名を掲げている
        ので、非公式であることは常時読める場所に置いておく（咲耶スクランブルと同文） -->
+  <section id="rank" aria-label="ランキング TOP10" hidden>
+    <div id="rankform">
+      <p class="rank-msg">TOP10入り！ 名前を登録してください</p>
+      <input id="rankname" type="text" maxlength="20" autocomplete="off"
+             placeholder="ニックネーム（必須）">
+      <input id="rankxid" type="text" maxlength="20" autocomplete="off"
+             placeholder="X の ID（任意・@なし）">
+      <div id="rankxidp"></div>
+      <button id="ranksend" type="button">登録する</button>
+      <p id="rankstat"></p>
+    </div>
+    <h2 class="rank-title">&#x1F3C6; TOP10</h2>
+    <ol id="ranklist"></ol>
+  </section>
   <footer class="site-footer">
     本作は CryptoNinja / CryptoNinja Partners の非公式ファンアートです
   </footer>
@@ -679,6 +758,7 @@ addEventListener('unhandledrejection', function(e){
     placePlayer();
     resetPause(true);
     state='play'; ov.classList.add('hidden'); resync=true;
+    rankSent=false; cleared=false; if(rankForm) rankForm.classList.remove('show');
     cancelAnimationFrame(rafId); rafId=requestAnimationFrame(loop);
     bgmStart();
   }
@@ -1300,14 +1380,15 @@ addEventListener('unhandledrejection', function(e){
     invul=INVUL;
   }
 
-  function win(){ state='over'; jingle();
+  function win(){ state='over'; cleared=true; jingle();
     finish('CLEAR!', 'SCORE '+score+' &nbsp;/&nbsp; 踏破 '+painted+'マス ('+
       Math.round(painted/openCells().length*100)+'%) &nbsp;/&nbsp; 残燃料 '+Math.round(fuel)); }
-  function lose(r){ state='over'; bgmStop();
+  function lose(r){ state='over'; cleared=false; bgmStop();
     finish('GAME OVER', r+' &nbsp;/&nbsp; SCORE '+score+' (CNP '+got+'/'+NTARGET+
       ' &nbsp;踏破 '+painted+'マス)'); }
   function finish(title,sub){
     if(score>best){ best=score; store.set('nounrally_best',best); }
+    rankOnFinish();
     beep(150,.28,'sawtooth',.06);
     ovt.textContent=title;
     ovsub.classList.add('hidden');   // タイトルの英語表記はスタート画面だけ
@@ -1316,6 +1397,160 @@ addEventListener('unhandledrejection', function(e){
     btn.textContent='RETRY'; ov.classList.remove('hidden');
     resetPause(false);
   }
+
+  /* ===== ランキング（F8）=====
+     GAS（Google Apps Script）のウェブアプリに JSON で読み書きする。
+     GAS_URL が空の間は枠ごと出さない ― 未設定のまま公開しても、
+     空のランキングや通信エラーを見せずに済む。
+     デプロイ後にこの1行だけ差し替えれば動く */
+  const GAS_URL = '';
+
+  const rankEl   = document.getElementById('rank');
+  const rankList = document.getElementById('ranklist');
+  const rankForm = document.getElementById('rankform');
+  const rankName = document.getElementById('rankname');
+  const rankXid  = document.getElementById('rankxid');
+  const rankXidP = document.getElementById('rankxidp');
+  const rankSend = document.getElementById('ranksend');
+  const rankStat = document.getElementById('rankstat');
+
+  let cleared=false;            // 直前のプレイで出口まで戻れたか
+  let rankRows=[];              // サーバから取った記録（スコアの降順）
+  let rankSent=false;           // 同じプレイで二重登録しない
+  let xidState='empty';         // empty | loading | ok | ng
+  let xidToken=0;               // 入力が変わったら古い結果を捨てるための連番
+
+  const esc = t => String(t).replace(/[&<>"']/g, c =>
+    ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const XID_RE = /^[A-Za-z0-9_]{1,15}$/;
+
+  // 踏破率。openCells() は通路のマス（岩と壁を除く）
+  function paintPct(){
+    const n=openCells().length;
+    return n ? Math.round(painted/n*100) : 0;
+  }
+
+  function renderRank(){
+    if(!rankList) return;
+    if(!rankRows.length){
+      rankList.innerHTML='<li class="rank-empty">まだ記録がありません</li>';
+      return;
+    }
+    rankList.innerHTML = rankRows.slice(0,10).map((r,i)=>{
+      const no=i+1;
+      const medal = no===1?'&#x1F947;' : no===2?'&#x1F948;' : no===3?'&#x1F949;' : no;
+      const xid=String(r.xid||'').replace(/^@/,'').trim();
+      const xPart = XID_RE.test(xid)
+        ? '<img src="https://unavatar.io/x/'+encodeURIComponent(xid)+'" alt="" loading="lazy"'+
+          ' onerror="this.style.visibility=\'hidden\'">'+
+          '<a href="https://x.com/'+encodeURIComponent(xid)+'" target="_blank"'+
+          ' rel="noopener noreferrer">@'+esc(xid)+'</a>'
+        : '';
+      const dev = r.device==='モバイル' ? '\uD83D\uDCF1 ' : r.device==='PC' ? '\uD83D\uDCBB ' : '';
+      const sub = '踏破 '+(r.paint|0)+'% ・ CNP '+(r.cnp|0)+'/'+NTARGET+
+                  (r.cleared ? ' ・ クリア' : '');
+      return '<li class="rank-row">'+
+        '<span class="rank-no">'+medal+'</span>'+
+        '<span class="rank-name">'+dev+esc(r.nickname)+'</span>'+
+        '<span class="rank-x">'+xPart+'</span>'+
+        '<span class="rank-sc">'+Math.floor(r.score)+'</span>'+
+        '<span class="rank-sub">'+sub+'</span>'+
+      '</li>';
+    }).join('');
+  }
+
+  function loadRank(){
+    if(!GAS_URL) return;
+    fetch(GAS_URL,{cache:'no-store'})
+      .then(r=>r.json())
+      .then(d=>{ rankRows=(d.records||[]).slice().sort((a,b)=>b.score-a.score); renderRank(); })
+      .catch(()=>renderRank());   // 取れなくても「まだ記録がありません」で済ませる
+  }
+
+  // 10件そろっていなければ誰でも載る。そろっていれば10位より上のときだけ
+  const rankQualifies = sc => rankRows.length<10 || sc>rankRows[9].score;
+
+  function rankOnFinish(){
+    if(!GAS_URL) return;
+    if(rankSent || !rankQualifies(score)){ rankForm.classList.remove('show'); return; }
+    rankForm.classList.add('show');
+    rankName.value=''; rankXid.value=''; rankStat.textContent='';
+    xidState='empty'; setXidP('','');
+    updateSend();
+  }
+
+  function setXidP(mode,html){
+    rankXidP.className = mode ? 'show '+mode : '';
+    rankXidP.innerHTML = html||'';
+  }
+  function updateSend(){
+    // 名前が要る。X ID は空ならよいが、入れたなら確認が取れるまで押せない
+    rankSend.disabled = !rankName.value.trim() || (xidState!=='empty' && xidState!=='ok');
+  }
+
+  // unavatar.io の画像が読めるかどうかで、Xアカウントの実在を確かめる。
+  // API キーが要らず、失敗しても画像が出ないだけで済む
+  function verifyXid(raw){
+    const u=String(raw||'').replace(/^@/,'').trim();
+    const token=++xidToken;
+    if(!u){ xidState='empty'; setXidP('',''); updateSend(); return; }
+    if(!XID_RE.test(u)){
+      xidState='ng';
+      setXidP('ng','半角の英数字とアンダースコアだけ、15文字までです');
+      updateSend(); return;
+    }
+    xidState='loading'; setXidP('','確認中…'); updateSend();
+    const img=new Image();
+    img.onload=()=>{ if(token!==xidToken) return;     // 入力が変わっていたら捨てる
+      xidState='ok';
+      setXidP('ok','<img src="https://unavatar.io/x/'+encodeURIComponent(u)+'" alt="">'+
+        '<span>@'+esc(u)+' を確認しました</span>');
+      updateSend(); };
+    img.onerror=()=>{ if(token!==xidToken) return;
+      xidState='ng'; setXidP('ng','このIDのXアカウントが見つかりません');
+      updateSend(); };
+    img.src='https://unavatar.io/x/'+encodeURIComponent(u);
+  }
+
+  if(rankXid){
+    // 打っている間は押せないままにする。空に戻したときだけ即座に戻す
+    rankXid.addEventListener('input',()=>{
+      if(!rankXid.value.trim()){ xidState='empty'; setXidP('',''); }
+      else { xidState='loading'; setXidP('',''); }
+      updateSend();
+    });
+    rankXid.addEventListener('blur',()=>verifyXid(rankXid.value));
+  }
+  if(rankName) rankName.addEventListener('input',updateSend);
+
+  if(rankSend) rankSend.addEventListener('click',()=>{
+    const nickname=rankName.value.trim();
+    if(!nickname){ rankStat.textContent='ニックネームを入れてください'; rankName.focus(); return; }
+    if(xidState!=='empty' && xidState!=='ok'){
+      rankStat.textContent='X の ID を確認できるまで登録できません'; rankXid.focus(); return;
+    }
+    rankSend.disabled=true; rankStat.textContent='登録中…';
+    const record={ nickname, xid:rankXid.value.trim().replace(/^@/,''),
+      score:Math.floor(score), created:Date.now(),
+      device:isMobileDevice?'モバイル':'PC',
+      paint:paintPct(), cnp:got, cleared };
+    // no-cors ではなく text/plain で投げる。GAS は preflight を返さないので、
+    // Content-Type を単純なものにしておかないと CORS で弾かれる
+    fetch(GAS_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},
+        body:JSON.stringify({action:'add',record})})
+      .then(r=>r.json())
+      .then(d=>{
+        if(!d.success) throw new Error(d.error||'failed');
+        rankSent=true;
+        rankStat.textContent='登録しました';
+        rankForm.classList.remove('show');
+        loadRank();
+      })
+      .catch(()=>{ rankStat.textContent='登録できませんでした。通信を確かめてください';
+        rankSend.disabled=false; });
+  });
+
+  if(GAS_URL){ rankEl.hidden=false; renderRank(); loadRank(); }
 
   const KEYDIR={ArrowUp:{x:0,y:-1},KeyW:{x:0,y:-1},ArrowDown:{x:0,y:1},KeyS:{x:0,y:1},
                 ArrowLeft:{x:-1,y:0},KeyA:{x:-1,y:0},ArrowRight:{x:1,y:0},KeyD:{x:1,y:0}};
