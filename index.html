@@ -268,7 +268,10 @@
   /* --- ランキング（F8）--- */
   /* GAS_URL が空のときは JS が hidden を付けたままにする。未設定のまま
      公開しても、空の枠だけが出る状態にはならない */
-  #rank{margin-top:18px;padding:14px 12px 18px;border-top:1px solid rgba(232,197,106,.22);}
+  /* 横持ちでは #wrap が画面いっぱいなので、そのままだと行が間延びする。
+     読む幅を絞って中央に置く（姉妹作の .leaderboard と同じ考え方） */
+  #rank{width:min(92vw,720px);margin:18px auto 0;padding:14px 12px 18px;
+    border-top:1px solid rgba(232,197,106,.22);}
   #rank[hidden]{display:none;}
   .rank-title{font-size:13px;letter-spacing:.14em;text-align:center;
     color:var(--gold);margin-bottom:10px;font-weight:800;}
@@ -287,18 +290,25 @@
   .rank-sub{grid-column:2 / -1;font-size:9.5px;opacity:.45;letter-spacing:.04em;}
   .rank-empty{text-align:center;font-size:11px;opacity:.45;padding:10px;}
   /* 登録フォーム。TOP10 に入ったときだけ出す */
-  #rankform{display:none;flex-direction:column;gap:7px;align-items:stretch;
-    margin-bottom:14px;padding:12px;border-radius:8px;
+  /* align-items:stretch だと入力欄が画面幅いっぱいに伸びて締まらない。
+     中央寄せにして、それぞれ 280px で頭打ちにする（姉妹作と同じ） */
+  #rankform{display:none;flex-direction:column;gap:8px;align-items:center;
+    width:min(360px,100%);margin:0 auto 14px;padding:14px 12px;border-radius:8px;
     background:rgba(232,197,106,.08);border:1px solid rgba(232,197,106,.3);}
   #rankform.show{display:flex;}
   .rank-msg{font-size:12px;text-align:center;color:var(--gold);font-weight:800;}
-  #rankform input{font:inherit;font-size:13px;padding:8px 10px;border-radius:6px;
+  /* font-size は 16px 未満にしないこと。iOS は 16px 未満の入力欄に
+     フォーカスすると画面を勝手に拡大する（B2 でピンチを潰した意味が無くなる） */
+  #rankform input{font:inherit;font-size:16px;width:min(280px,100%);
+    padding:9px 11px;border-radius:6px;
     border:1px solid rgba(242,233,239,.25);background:rgba(21,15,26,.6);color:var(--ink);}
   #rankform input::placeholder{color:rgba(242,233,239,.35);}
-  #ranksend{font:inherit;font-size:13px;font-weight:800;padding:9px;border-radius:6px;
+  #ranksend{font:inherit;font-size:14px;font-weight:800;width:min(280px,100%);
+    padding:10px;border-radius:6px;
     border:none;background:var(--pink);color:#1a1020;cursor:pointer;}
   #ranksend:disabled{opacity:.4;cursor:default;}
-  #rankxidp{display:none;align-items:center;gap:6px;font-size:10.5px;line-height:1.5;}
+  #rankxidp{display:none;align-items:center;justify-content:center;gap:6px;
+    width:min(280px,100%);font-size:10.5px;line-height:1.5;text-align:center;}
   #rankxidp.show{display:flex;}
   #rankxidp.ng{color:#ff9a9a;}
   #rankxidp.ok{color:#9ae6b4;}
@@ -796,6 +806,7 @@ addEventListener('unhandledrejection', function(e){
     rankSent=false; cleared=false; if(rankForm) rankForm.classList.remove('show');
     endClearVideo(); unlockClearVideo();   // 途中で再開されても演出を残さない
     shareBtn.classList.remove('show'); shareMsg.textContent='';
+    updateRankVisible();                   // 遊んでいる間はランキングを畳む
     if(cardPv) cardPv.classList.remove('show');
     cancelAnimationFrame(rafId); rafId=requestAnimationFrame(loop);
     bgmStart();
@@ -1490,6 +1501,7 @@ addEventListener('unhandledrejection', function(e){
       ' &nbsp;踏破 '+painted+'マス)'); }
   function finish(title,sub){
     if(score>best){ best=score; store.set('nounrally_best',best); }
+    updateRankVisible();                   // 結果画面では出す
     rankOnFinish();
     beep(150,.28,'sawtooth',.06);
     ovt.textContent=title;
@@ -1652,6 +1664,14 @@ addEventListener('unhandledrejection', function(e){
       .catch(()=>{ rankStat.textContent='登録できませんでした。通信を確かめてください';
         rankSend.disabled=false; });
   });
+
+  // 遊んでいる間は枠ごと畳む。出したままだとページが縦に伸び、指で少し
+  // なぞっただけでスクロールしてゲーム画面が切れる（姉妹作も同じ方針）。
+  // タイトル画面と結果画面でだけ出す
+  function updateRankVisible(){
+    if(!GAS_URL || !rankEl) return;
+    rankEl.hidden = (state==='play');
+  }
 
   if(GAS_URL){ rankEl.hidden=false; renderRank(); loadRank(); }
 
