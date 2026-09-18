@@ -1784,6 +1784,27 @@ addEventListener('unhandledrejection', function(e){
   }
   applyShareLabel();
 
+  // ?diag=1 のときだけ、押した結果どの経路を通ったかを出す。
+  // iPhone で共有シートに入らない、という報告を推測で追いかけないため
+  function shareDiag(extra){
+    // DIAG は後方で const 宣言されている。ここで参照すると、呼ばれる順によっては
+    // TDZ を踏む（README「すべての宣言が終わったあとで呼ぶこと」）。
+    // 判定は軽いので、その場で見る
+    if(location.search.indexOf('diag=1')<0) return;
+    let csF='-';
+    try{
+      csF = (navigator.canShare && navigator.canShare({
+        files:[new File([new Blob([1],{type:'image/png'})],'x.png',{type:'image/png'})]
+      })) ? 'true' : 'false';
+    }catch(err){ csF='throw:'+(err&&err.name); }
+    shareMsg.textContent =
+      'share'+(typeof navigator.share) + ' cs'+(typeof navigator.canShare)
+      + ' csF'+csF + ' clip'+(!!(navigator.clipboard&&window.ClipboardItem))
+      + ' sec'+(!!window.isSecureContext)
+      + ' app'+(navigator.standalone?1:(matchMedia('(display-mode:standalone)').matches?1:0))
+      + ' / ' + extra;
+  }
+
   if(shareBtn) shareBtn.addEventListener('click', async e=>{
     e.stopPropagation();
     shareBtn.disabled=true; shareMsg.textContent='';
@@ -1793,15 +1814,20 @@ addEventListener('unhandledrejection', function(e){
     catch(err){ shareMsg.textContent='画像を作れませんでした。文だけ投稿します';
       openXIntent(text); shareBtn.disabled=false; return; }
     const {blob,file}=made;
+    const kb=Math.round(blob.size/1024);
 
     // 1) 共有シート。画像と文をそのまま渡せる（スマホはこれ）
-    if(navigator.canShare && navigator.canShare({files:[file]})){
+    let can=false, canErr='';
+    try{ can = !!(navigator.canShare && navigator.canShare({files:[file]})); }
+    catch(err){ canErr=(err&&err.name)||'err'; }
+    if(can){
       try{
         await navigator.share({ text, files:[file] });
-        shareBtn.disabled=false; return;
+        shareDiag('sheet ok '+kb+'KB'); shareBtn.disabled=false; return;
       }catch(err){
         // 閉じただけなら何もしない。それ以外は下の経路へ落ちる
-        if(err && err.name==='AbortError'){ shareBtn.disabled=false; return; }
+        if(err && err.name==='AbortError'){ shareDiag('sheet abort'); shareBtn.disabled=false; return; }
+        canErr=(err&&err.name)||'err';
       }
     }
 
@@ -1814,8 +1840,8 @@ addEventListener('unhandledrejection', function(e){
         await navigator.clipboard.write([new ClipboardItem({'image/png':blob})]);
         openXIntent(text);
         shareMsg.textContent='画像をコピーしました。投稿画面で貼り付けてください';
-        shareBtn.disabled=false; return;
-      }catch(err){ /* 権限が無い等。保存へ落とす */ }
+        shareDiag('copy '+kb+'KB '+canErr); shareBtn.disabled=false; return;
+      }catch(err){ canErr=canErr||('clip:'+((err&&err.name)||'err')); }
     }
 
     // 3) 最後の手段。保存してもらって手で添付
@@ -1828,6 +1854,7 @@ addEventListener('unhandledrejection', function(e){
       shareMsg.textContent='画像を保存しました。投稿画面に添付してください';
     }catch(err){ shareMsg.textContent='文だけ投稿します'; }
     openXIntent(text);
+    shareDiag('save '+kb+'KB '+canErr);
     shareBtn.disabled=false;
   });
 
