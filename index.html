@@ -104,11 +104,35 @@
   #ovbuild.hidden{display:none;}
   #ov p{flex:0 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;
     font-size:clamp(11px,2.8vh,13px);opacity:.85;line-height:1.6;}
+  /* シェア（F9）。RETRY の下に置く。結果を見ている場所がいちばん押しやすい */
+  #share{flex:0 0 auto;display:none;margin-top:6px;font:inherit;font-size:11px;
+    letter-spacing:.08em;padding:7px 16px;border-radius:14px;cursor:pointer;
+    border:1px solid rgba(232,197,106,.55);background:rgba(232,197,106,.12);color:var(--gold);}
+  #share.show{display:block;}
+  /* 説明行はシェアボタンと一緒に出す。常に置いておくと、スタート画面でも
+     1行ぶん場所を取り、ただでさえきつい START ボタンの余白を削ってしまう
+     （実測: 余白が -19px から -30px に減っていた） */
+  #sharemsg{display:none;flex:0 0 auto;font-size:9.5px;opacity:.6;margin-top:3px;min-height:1em;}
+  #share.show + #sharemsg{display:block;}
+
   #btn{flex:0 0 auto;margin-top:4px;font:inherit;font-weight:800;letter-spacing:.1em;padding:9px 20px;
     background:var(--ink);color:var(--bg);border:none;border-radius:7px;box-shadow:3px 3px 0 var(--pink);}
   #btn:active{transform:translate(2px,2px);box-shadow:1px 1px 0 var(--pink);}
 
   /* 初期化で落ちたときだけ出る帯。押すと消える */
+  /* クリア演出の動画（F13）。canvas に毎フレーム描き込むのではなく、
+     ステージの上に重ねる。display:none にすると再生が止まる環境があるので
+     出し入れは opacity ではなく visibility+z-index ではなく、素直に class で */
+  #clearvid{position:absolute;inset:0;z-index:7;display:none;
+    width:100%;height:100%;object-fit:contain;background:#000;}
+  #clearvid.show{display:block;}
+  /* 動画中に出す「タップで飛ばす」。演出を見たい人の邪魔にならない濃さ */
+  #vidskip{position:absolute;right:8px;bottom:8px;z-index:8;display:none;
+    font:inherit;font-size:10px;letter-spacing:.08em;padding:5px 9px;border-radius:12px;
+    border:1px solid rgba(242,233,239,.35);background:rgba(21,15,26,.55);
+    color:var(--ink);opacity:.55;}
+  #vidskip.show{display:block;}
+
   #crash{position:fixed;left:0;right:0;top:0;z-index:99;
     background:#7d1f1f;color:#ffe9e9;font-size:11px;line-height:1.5;
     padding:6px 10px;word-break:break-all;}
@@ -327,12 +351,16 @@
     <div id="stage">
       <canvas id="c" width="614" height="384"></canvas>
       <button id="pause" type="button" aria-label="一時停止">&#x23F8;</button>
+      <video id="clearvid" playsinline preload="none" aria-hidden="true"></video>
+      <button id="vidskip" type="button">タップで飛ばす</button>
       <div id="ov">
         <h2 id="ovt">咲耶<span class="g">Noun</span>ラリー</h2>
         <div id="ovsub">SakuyaNounRally</div>
         <div id="ovbuild"></div>
         <p id="ovp">CNP11体を集めて、出口へ戻れ。通った跡が得点。<br>車は止まらない ― 曲がる方向だけ決める。<br>壁に当たると自動で右へ。行き止まりだけ跳ね返る。<br>赤い車に触れるとクラッシュ。車は3台。<br>SMOKE で敵はスピン。ただし燃料を多く食う。<br>燃料が尽きると減速し、8秒で力尽きる。<br><br>スマホ: 画面を押したまま倒す<br>PC: 矢印/WASD ・ Space=煙 ・ M=音 ・ P=一時停止</p>
         <button id="btn">START</button>
+        <button id="share" type="button">&#x1D54F; でシェア</button>
+        <p id="sharemsg"></p>
       </div>
     </div>
     <div id="side">
@@ -759,6 +787,8 @@ addEventListener('unhandledrejection', function(e){
     resetPause(true);
     state='play'; ov.classList.add('hidden'); resync=true;
     rankSent=false; cleared=false; if(rankForm) rankForm.classList.remove('show');
+    endClearVideo(); unlockClearVideo();   // 途中で再開されても演出を残さない
+    shareBtn.classList.remove('show'); shareMsg.textContent='';
     cancelAnimationFrame(rafId); rafId=requestAnimationFrame(loop);
     bgmStart();
   }
@@ -1074,6 +1104,62 @@ addEventListener('unhandledrejection', function(e){
     bgmVoice(57, t0+4*0.11, 0.42, 'triangle', 0.09);
   }
 
+  /* ===== クリア演出の動画（F13）=====
+     ゴールしたときだけ流す。クラッシュや燃料切れでは出さない。
+     preload="none" にしてあり、src を入れるのは START を押したとき。
+     クリアまで行かない人に 5.7MB を押しつけない。
+     iOS はユーザー操作を経ていない再生を拒むので、その START のタップで
+     一度「無音で再生→即停止」して解錠しておく（音声の unlock と同じ理屈） */
+  const CLEAR_VIDEO_SRC = 'assets/rally_clear.mp4';
+  const vidEl   = document.getElementById('clearvid');
+  const vidSkip = document.getElementById('vidskip');
+  let vidFailed=false, vidUnlocked=false, vidPlaying=false, vidDone=null;
+
+  if(vidEl){
+    vidEl.addEventListener('error', ()=>{ vidFailed=true; endClearVideo(); });
+    vidEl.addEventListener('ended', ()=>endClearVideo());
+  }
+
+  function unlockClearVideo(){
+    if(!vidEl || vidUnlocked) return;
+    vidUnlocked=true;
+    if(!vidEl.src) vidEl.src=CLEAR_VIDEO_SRC;
+    vidEl.muted=true;
+    const pr=vidEl.play();
+    if(pr && pr.then) pr.then(()=>{ vidEl.pause(); try{vidEl.currentTime=0;}catch(e){} }).catch(()=>{});
+  }
+
+  // 流せるなら流して true。流せないなら false（呼び側がそのまま結果へ進む）
+  function playClearVideo(done){
+    // readyState>=3 は「最後まで途切れずに流せる見込み」。
+    // 間に合っていないのに挟むと、止まった絵で待たされるだけになる
+    if(!vidEl || vidFailed || !vidEl.src || vidEl.readyState<3 || !vidEl.videoWidth) return false;
+    vidDone=done; vidPlaying=true;
+    try{ vidEl.currentTime=0; }catch(e){}
+    vidEl.muted=muted;
+    vidEl.classList.add('show'); vidSkip.classList.add('show');
+    const pr=vidEl.play();
+    if(pr && pr.catch) pr.catch(()=>{
+      // 音付きが断られたら無音で映像だけ出す（iOSの省電力モード等）
+      vidEl.muted=true;
+      const q=vidEl.play();
+      if(q && q.catch) q.catch(()=>{ vidFailed=true; endClearVideo(); });
+    });
+    return true;
+  }
+
+  function endClearVideo(){
+    if(!vidPlaying){ return; }
+    vidPlaying=false;
+    vidEl.pause(); try{ vidEl.currentTime=0; }catch(e){}
+    vidEl.classList.remove('show'); vidSkip.classList.remove('show');
+    const d=vidDone; vidDone=null;
+    if(d) d();
+  }
+  // 途中で飛ばせるようにする。長い演出を毎回見せられるのは苦痛
+  if(vidSkip) vidSkip.addEventListener('click',e=>{ e.stopPropagation(); endClearVideo(); });
+  if(vidEl)   vidEl.addEventListener('click',()=>endClearVideo());
+
   const muteBtn=document.getElementById('mute');
   function applyMute(){
     if(master) master.gain.value = muted?0:1;
@@ -1082,7 +1168,8 @@ addEventListener('unhandledrejection', function(e){
     muteBtn.classList.toggle('off', muted);
     store.set('nounrally_mute', muted?'1':'0');
   }
-  muteBtn.addEventListener('click',e=>{ e.stopPropagation(); muted=!muted; audio(); applyMute(); });
+  muteBtn.addEventListener('click',e=>{ e.stopPropagation(); muted=!muted; audio(); applyMute();
+    if(vidEl && vidPlaying) vidEl.muted=muted; });   // 再生中の切替にも追従させる
   applyMute();
 
   // ⌐◨-◨ ノグルズ。咲耶スクランブル側の drawNoggles() と同じ作りで、
@@ -1380,9 +1467,16 @@ addEventListener('unhandledrejection', function(e){
     invul=INVUL;
   }
 
-  function win(){ state='over'; cleared=true; jingle();
-    finish('CLEAR!', 'SCORE '+score+' &nbsp;/&nbsp; 踏破 '+painted+'マス ('+
-      Math.round(painted/openCells().length*100)+'%) &nbsp;/&nbsp; 残燃料 '+Math.round(fuel)); }
+  function win(){
+    state='over'; cleared=true;
+    const show=()=>finish('CLEAR!', 'SCORE '+score+' &nbsp;/&nbsp; 踏破 '+painted+'マス ('+
+      Math.round(painted/openCells().length*100)+'%) &nbsp;/&nbsp; 残燃料 '+Math.round(fuel));
+    bgmStop();
+    // 動画が流せるならそちらに任せ、ジングルは鳴らさない（音がぶつかる）。
+    // 流せないときは今までどおりジングル＋即結果
+    if(playClearVideo(show)) return;
+    jingle(); show();
+  }
   function lose(r){ state='over'; cleared=false; bgmStop();
     finish('GAME OVER', r+' &nbsp;/&nbsp; SCORE '+score+' (CNP '+got+'/'+NTARGET+
       ' &nbsp;踏破 '+painted+'マス)'); }
@@ -1395,6 +1489,7 @@ addEventListener('unhandledrejection', function(e){
     ovbuild.classList.add('hidden');
     ovp.innerHTML=sub+'<br><br>車は止まらない。曲がる方向だけ決める。<br>壁に当たると自動で右へ。行き止まりは跳ね返る。<br>SMOKE は燃料を多く食う ― 使いどころ注意。';
     btn.textContent='RETRY'; ov.classList.remove('hidden');
+    shareBtn.classList.add('show'); shareMsg.textContent='';
     resetPause(false);
   }
 
@@ -1551,6 +1646,141 @@ addEventListener('unhandledrejection', function(e){
   });
 
   if(GAS_URL){ rankEl.hidden=false; renderRank(); loadRank(); }
+
+  /* ===== X へのシェア（F9）=====
+     1200x675 のカードを canvas で描き、OS の共有シートに画像ごと渡す。
+     共有シートに対応していない環境では、画像を保存してから X の投稿画面を開く
+     ― X は URL 経由での画像の自動添付に対応していない（X側の仕様）ので、
+     こればかりは手で添付してもらうしかない */
+  const shareBtn=document.getElementById('share');
+  const shareMsg=document.getElementById('sharemsg');
+  const SHARE_URL='https://rally.naoblock.jp/';
+  const cardImg=new Image();          // カードの背景に使う一枚絵
+  cardImg.src='assets/rally_title.jpg';
+
+  function shareText(){
+    const pct=paintPct();
+    return '咲耶Nounラリー で SCORE ' + score.toLocaleString() + '！\n'
+      + 'CNP ' + got + '/' + NTARGET + ' ・ 踏破 ' + pct + '%'
+      + (cleared ? ' ・ クリア' : '') + '\n'
+      + '#咲耶Nounラリー #CNP\n' + SHARE_URL;
+  }
+
+  function buildShareCard(){
+    const W=1200, H=675, card=document.createElement('canvas');
+    card.width=W; card.height=H;
+    const g=card.getContext('2d');
+
+    g.fillStyle='#150f1a'; g.fillRect(0,0,W,H);
+    // 一枚絵は上側だけに敷き、そこで断ち切る。全面に薄く敷くと、下の数字や
+    // 注意書きが絵と重なって沈む（最初そうして読めなくなった）
+    const ART_H=386;
+    if(cardImg.complete && cardImg.naturalWidth){
+      g.save();
+      g.beginPath(); g.rect(0,0,W,ART_H); g.clip();
+      g.globalAlpha=.45;
+      const sc=Math.max(W/cardImg.naturalWidth, ART_H/cardImg.naturalHeight);
+      const dw=cardImg.naturalWidth*sc, dh=cardImg.naturalHeight*sc;
+      g.drawImage(cardImg,(W-dw)/2,(ART_H-dh)/2,dw,dh);
+      g.restore();
+      // 上端は題字、下端は地の色へ。中ほどだけ絵を見せる
+      const grd=g.createLinearGradient(0,0,0,ART_H);
+      grd.addColorStop(0,   'rgba(21,15,26,.82)');
+      grd.addColorStop(0.30,'rgba(21,15,26,.30)');
+      grd.addColorStop(1,   'rgba(21,15,26,1)');
+      g.fillStyle=grd; g.fillRect(0,0,W,ART_H);
+    }
+    g.strokeStyle='#e8c56a'; g.lineWidth=5; g.strokeRect(12,12,W-24,H-24);
+
+    const F=n=>n+'px ui-monospace, "SF Mono", Menlo, Consolas, monospace';
+    g.textAlign='center';
+    g.fillStyle='#e8c56a'; g.font='800 '+F(26);
+    g.fillText('咲耶Nounラリー  ⌐◨-◨', W/2, 74);
+    g.fillStyle='rgba(242,233,239,.5)'; g.font=F(16);
+    g.fillText('S A K U Y A   N O U N   R A L L Y', W/2, 104);
+
+    g.fillStyle = cleared ? '#ff2d9b' : 'rgba(242,233,239,.85)';
+    g.font='800 '+F(64);
+    g.fillText(cleared ? 'CLEAR!' : 'GAME OVER', W/2, 210);
+
+    g.fillStyle='rgba(242,233,239,.5)'; g.font=F(18);
+    g.fillText('SCORE', W/2, 268);
+    g.fillStyle='#e8c56a'; g.font='800 '+F(86);
+    g.fillText(score.toLocaleString(), W/2, 348);
+
+    // 数字を3つ横に並べる。1つずつ「見出し＋値」で組む
+    const cells=[['CNP', got+' / '+NTARGET], ['踏破', paintPct()+'%'],
+                 ['ゴール', cleared?'到達':'未到達']];
+    cells.forEach((c,i)=>{
+      const cx=W*(0.22+0.28*i);   // 264 / 600 / 936。端に寄せると窮屈に見える
+      g.fillStyle='rgba(242,233,239,.45)'; g.font=F(17);
+      g.fillText(c[0], cx, 404);
+      g.fillStyle='#f2e9ef'; g.font='800 '+F(34);
+      g.fillText(c[1], cx, 444);
+    });
+
+    // 集めた CNP の顔を並べる。取れなかった子は暗く落として「あと誰が残って
+    // いたか」が読めるようにする（ゲーム中の枠と同じ考え方）
+    const n=NTARGET, sz=64, gap=10, total=n*sz+(n-1)*gap, x0=(W-total)/2, y0=500;
+    g.fillStyle='rgba(242,233,239,.03)';
+    g.fillRect(x0-12,y0-12,total+24,sz+24);
+    for(let i=0;i<n;i++){
+      const x=x0+i*(sz+gap), ch=CNP[i], on=targets[i] && targets[i].got;
+      g.fillStyle = on ? 'rgba(232,197,106,.16)' : 'rgba(242,233,239,.05)';
+      g.fillRect(x,y0,sz,sz);
+      if(ch && ch.ready){
+        g.save(); g.globalAlpha = on ? 1 : .18;
+        g.drawImage(ch.img,x+4,y0+4,sz-8,sz-8);
+        g.restore();
+      } else {
+        g.fillStyle = on ? ch.c : 'rgba(242,233,239,.12)';
+        g.fillRect(x+14,y0+14,sz-28,sz-28);
+      }
+      g.strokeStyle = on ? '#e8c56a' : 'rgba(242,233,239,.12)';
+      g.lineWidth=2; g.strokeRect(x+1,y0+1,sz-2,sz-2);
+    }
+
+    g.fillStyle='rgba(242,233,239,.4)'; g.font=F(16);
+    g.fillText(SHARE_URL.replace(/^https:\/\//,'').replace(/\/$/,''), W/2, 612);
+    g.fillStyle='rgba(242,233,239,.28)'; g.font=F(13);
+    g.fillText('本作は CryptoNinja / CryptoNinja Partners の非公式ファンアートです', W/2, 640);
+    return card;
+  }
+
+  function openXIntent(text){
+    window.open('https://twitter.com/intent/tweet?text='+encodeURIComponent(text),
+      '_blank','noopener,noreferrer');
+  }
+
+  if(shareBtn) shareBtn.addEventListener('click', async e=>{
+    e.stopPropagation();
+    shareBtn.disabled=true; shareMsg.textContent='';
+    const text=shareText();
+    try{
+      const card=buildShareCard();
+      const blob=await new Promise(r=>card.toBlob(r,'image/png'));
+      const file=blob ? new File([blob],'sakuya-noun-rally.png',{type:'image/png'}) : null;
+      if(file && navigator.canShare && navigator.canShare({files:[file]})){
+        await navigator.share({ text, files:[file] });
+      } else if(file){
+        const url=URL.createObjectURL(file);
+        const a=document.createElement('a');
+        a.href=url; a.download='sakuya-noun-rally.png';
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(()=>URL.revokeObjectURL(url),30000);
+        openXIntent(text);
+        shareMsg.textContent='画像を保存しました。投稿画面に添付してください';
+      } else {
+        openXIntent(text);
+      }
+    }catch(err){
+      // 共有シートを閉じただけでも AbortError で reject される。これは失敗ではない
+      if(err && err.name!=='AbortError'){
+        shareMsg.textContent='画像を作れませんでした。文だけ投稿します';
+        openXIntent(text);
+      }
+    }finally{ shareBtn.disabled=false; }
+  });
 
   const KEYDIR={ArrowUp:{x:0,y:-1},KeyW:{x:0,y:-1},ArrowDown:{x:0,y:1},KeyS:{x:0,y:1},
                 ArrowLeft:{x:-1,y:0},KeyA:{x:-1,y:0},ArrowRight:{x:1,y:0},KeyD:{x:1,y:0}};
