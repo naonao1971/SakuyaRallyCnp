@@ -866,8 +866,45 @@ if(file && navigator.canShare && navigator.canShare({files:[file]})){
 ### X は URL 経由で画像を添付できない
 
 X の投稿画面（`intent/tweet`）は**URLパラメータでの画像添付に対応していない**
-（X側の仕様）。共有シートが使えない環境では、**画像を保存してから投稿画面を開き、
-手で添付してもらう**しかない。姉妹作と同じ結論。
+（X側の仕様）。だから画像はどうやっても**手で渡す**しかない。
+
+### 経路は3つ。押す前にボタンの文言で予告する
+
+最初は「共有シート、だめなら保存」の2つにしていたら、**PC で PNG が勝手に
+落ちてくる**という報告が来た。**それは設計どおりだったが、良い体験ではない。**
+
+| 環境 | 経路 | ボタンの文言 |
+| --- | --- | --- |
+| スマホ | `navigator.share({files})` | 𝕏 でシェア |
+| **PC** | **クリップボードへ画像をコピー**＋投稿画面 | 画像をコピーして 𝕏 を開く |
+| それ以外 | 保存＋投稿画面 | 画像を保存して 𝕏 を開く |
+
+**PC はコピーで済む。** 保存して開き直すより、**貼り付けるだけ**のほうが短い。
+`navigator.clipboard.write` ＋ `ClipboardItem` は Chrome / Edge / Safari で使える。
+
+**何が起きるかをボタンに書く。** 押すまで分からないと、保存もコピーも「勝手に
+何かされた」と感じる。`shareWay()` で環境を先に見て文言を決めている。
+
+### `await` を挟むと共有シートが断られる
+
+```js
+// だめ: toBlob は非同期。await の後だと iOS Safari が NotAllowedError で断る
+const blob = await new Promise(r=>card.toBlob(r,'image/png'));
+// よい: toDataURL は同期。そこから同期で Blob を作る
+const url = card.toDataURL('image/png');
+```
+
+`navigator.share()` は**ユーザー操作の続き**とみなされる間しか呼べない。
+`await` で時間を使うとその窓が閉じる。**同期で作れるものは同期で作る。**
+
+### 共有シートを閉じただけでも reject される
+
+```js
+if(err && err.name==='AbortError'){ return; }   // やめただけ。次の手へ落とさない
+```
+
+`AbortError` は**キャンセル**。ここで保存に落とすと、**やめた人のフォルダに
+勝手にファイルが増える。** それ以外の失敗（`NotAllowedError` 等）は次の手へ落とす。
 
 ### 共有シートを閉じただけでも reject される
 

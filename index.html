@@ -1752,34 +1752,83 @@ addEventListener('unhandledrejection', function(e){
       '_blank','noopener,noreferrer');
   }
 
+  // canvas.toBlob は非同期。await を挟むと、iOS Safari では「ユーザー操作の
+  // 続き」とみなされる時間を使い切って navigator.share() が NotAllowedError で
+  // 断られることがある。toDataURL は同期なので、そこから同期で Blob を作る
+  function cardFileSync(){
+    const url=buildShareCard().toDataURL('image/png');
+    const bin=atob(url.split(',')[1]);
+    const buf=new Uint8Array(bin.length);
+    for(let i=0;i<bin.length;i++) buf[i]=bin.charCodeAt(i);
+    const blob=new Blob([buf],{type:'image/png'});
+    return { blob, file:new File([blob],'sakuya-noun-rally.png',{type:'image/png'}) };
+  }
+
+  // どの経路を使えるかは環境で決まる。押す前に分かるので、ボタンの文言も変える
+  function shareWay(){
+    try{
+      if(navigator.canShare && navigator.canShare({
+        files:[new File([new Blob([1],{type:'image/png'})],'x.png',{type:'image/png'})]
+      })) return 'sheet';
+    }catch(e){}
+    if(navigator.clipboard && window.ClipboardItem && window.isSecureContext) return 'copy';
+    return 'save';
+  }
+
+  function applyShareLabel(){
+    if(!shareBtn) return;
+    const w=shareWay();
+    shareBtn.textContent = w==='sheet' ? '\uD835\uDD4F でシェア'
+      : w==='copy' ? '画像をコピーして \uD835\uDD4F を開く'
+      : '画像を保存して \uD835\uDD4F を開く';
+  }
+  applyShareLabel();
+
   if(shareBtn) shareBtn.addEventListener('click', async e=>{
     e.stopPropagation();
     shareBtn.disabled=true; shareMsg.textContent='';
     const text=shareText();
-    try{
-      const card=buildShareCard();
-      const blob=await new Promise(r=>card.toBlob(r,'image/png'));
-      const file=blob ? new File([blob],'sakuya-noun-rally.png',{type:'image/png'}) : null;
-      if(file && navigator.canShare && navigator.canShare({files:[file]})){
+    let made=null;
+    try{ made=cardFileSync(); }
+    catch(err){ shareMsg.textContent='画像を作れませんでした。文だけ投稿します';
+      openXIntent(text); shareBtn.disabled=false; return; }
+    const {blob,file}=made;
+
+    // 1) 共有シート。画像と文をそのまま渡せる（スマホはこれ）
+    if(navigator.canShare && navigator.canShare({files:[file]})){
+      try{
         await navigator.share({ text, files:[file] });
-      } else if(file){
-        const url=URL.createObjectURL(file);
-        const a=document.createElement('a');
-        a.href=url; a.download='sakuya-noun-rally.png';
-        document.body.appendChild(a); a.click(); a.remove();
-        setTimeout(()=>URL.revokeObjectURL(url),30000);
-        openXIntent(text);
-        shareMsg.textContent='画像を保存しました。投稿画面に添付してください';
-      } else {
-        openXIntent(text);
+        shareBtn.disabled=false; return;
+      }catch(err){
+        // 閉じただけなら何もしない。それ以外は下の経路へ落ちる
+        if(err && err.name==='AbortError'){ shareBtn.disabled=false; return; }
       }
-    }catch(err){
-      // 共有シートを閉じただけでも AbortError で reject される。これは失敗ではない
-      if(err && err.name!=='AbortError'){
-        shareMsg.textContent='画像を作れませんでした。文だけ投稿します';
+    }
+
+    // 2) クリップボードへ画像をコピーして投稿画面を開く。PC はこれがいちばん
+    //    近道 ― 保存して開き直すより、貼り付けるだけで済む。
+    //    X の投稿画面は URL 経由での画像添付に対応していない（X側の仕様）ので、
+    //    どのみち画像は手で渡すしかない
+    if(navigator.clipboard && window.ClipboardItem){
+      try{
+        await navigator.clipboard.write([new ClipboardItem({'image/png':blob})]);
         openXIntent(text);
-      }
-    }finally{ shareBtn.disabled=false; }
+        shareMsg.textContent='画像をコピーしました。投稿画面で貼り付けてください';
+        shareBtn.disabled=false; return;
+      }catch(err){ /* 権限が無い等。保存へ落とす */ }
+    }
+
+    // 3) 最後の手段。保存してもらって手で添付
+    try{
+      const url=URL.createObjectURL(blob);
+      const a=document.createElement('a');
+      a.href=url; a.download='sakuya-noun-rally.png';
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(()=>URL.revokeObjectURL(url),30000);
+      shareMsg.textContent='画像を保存しました。投稿画面に添付してください';
+    }catch(err){ shareMsg.textContent='文だけ投稿します'; }
+    openXIntent(text);
+    shareBtn.disabled=false;
   });
 
   const KEYDIR={ArrowUp:{x:0,y:-1},KeyW:{x:0,y:-1},ArrowDown:{x:0,y:1},KeyS:{x:0,y:1},
