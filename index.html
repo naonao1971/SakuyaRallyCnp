@@ -123,6 +123,12 @@
   /* クリア演出の動画（F13）。canvas に毎フレーム描き込むのではなく、
      ステージの上に重ねる。display:none にすると再生が止まる環境があるので
      出し入れは opacity ではなく visibility+z-index ではなく、素直に class で */
+  /* ?diag=1 のとき、実際に作られたカードをそのまま出す。
+     「画像が空だ」という報告を、数字ではなく絵で確かめるため */
+  #cardpv{position:absolute;inset:0;z-index:9;display:none;
+    width:100%;height:100%;object-fit:contain;background:#000;}
+  #cardpv.show{display:block;}
+
   #clearvid{position:absolute;inset:0;z-index:7;display:none;
     width:100%;height:100%;object-fit:contain;background:#000;}
   #clearvid.show{display:block;}
@@ -351,6 +357,7 @@
     <div id="stage">
       <canvas id="c" width="614" height="384"></canvas>
       <button id="pause" type="button" aria-label="一時停止">&#x23F8;</button>
+      <img id="cardpv" alt="シェアされるカード">
       <video id="clearvid" playsinline preload="none" aria-hidden="true"></video>
       <button id="vidskip" type="button">タップで飛ばす</button>
       <div id="ov">
@@ -789,6 +796,7 @@ addEventListener('unhandledrejection', function(e){
     rankSent=false; cleared=false; if(rankForm) rankForm.classList.remove('show');
     endClearVideo(); unlockClearVideo();   // 途中で再開されても演出を残さない
     shareBtn.classList.remove('show'); shareMsg.textContent='';
+    if(cardPv) cardPv.classList.remove('show');
     cancelAnimationFrame(rafId); rafId=requestAnimationFrame(loop);
     bgmStart();
   }
@@ -1669,6 +1677,11 @@ addEventListener('unhandledrejection', function(e){
   function buildShareCard(){
     const W=1200, H=675, card=document.createElement('canvas');
     card.width=W; card.height=H;
+    // DOM から外れた canvas は、iOS Safari だと書き出しが空になることがある
+    // （メモリが厳しいときに中身を捨てる）。画面の外に置いてから描く
+    card.style.cssText='position:fixed;left:-20000px;top:0;width:1px;height:1px;'+
+      'pointer-events:none;';
+    document.body.appendChild(card);
     const g=card.getContext('2d');
 
     g.fillStyle='#150f1a'; g.fillRect(0,0,W,H);
@@ -1744,7 +1757,7 @@ addEventListener('unhandledrejection', function(e){
     g.fillText(SHARE_URL.replace(/^https:\/\//,'').replace(/\/$/,''), W/2, 612);
     g.fillStyle='rgba(242,233,239,.28)'; g.font=F(13);
     g.fillText('本作は CryptoNinja / CryptoNinja Partners の非公式ファンアートです', W/2, 640);
-    return card;
+    return card;   // 後始末は cardFileSync が行う（書き出しが終わるまで外さない）
   }
 
   function openXIntent(text){
@@ -1756,12 +1769,16 @@ addEventListener('unhandledrejection', function(e){
   // 続き」とみなされる時間を使い切って navigator.share() が NotAllowedError で
   // 断られることがある。toDataURL は同期なので、そこから同期で Blob を作る
   function cardFileSync(){
-    const url=buildShareCard().toDataURL('image/png');
+    const card=buildShareCard();
+    let url;
+    try{ url=card.toDataURL('image/png'); }
+    finally{ card.remove(); }
+    if(!url || url.length<2000) throw new Error('empty card');   // 空なら先へ進めない
     const bin=atob(url.split(',')[1]);
     const buf=new Uint8Array(bin.length);
     for(let i=0;i<bin.length;i++) buf[i]=bin.charCodeAt(i);
     const blob=new Blob([buf],{type:'image/png'});
-    return { blob, file:new File([blob],'sakuya-noun-rally.png',{type:'image/png'}) };
+    return { blob, url, file:new File([blob],'sakuya-noun-rally.png',{type:'image/png'}) };
   }
 
   // どの経路を使えるかは環境で決まる。押す前に分かるので、ボタンの文言も変える
@@ -1786,6 +1803,13 @@ addEventListener('unhandledrejection', function(e){
 
   // ?diag=1 のときだけ、押した結果どの経路を通ったかを出す。
   // iPhone で共有シートに入らない、という報告を推測で追いかけないため
+  const cardPv=document.getElementById('cardpv');
+  if(cardPv) cardPv.addEventListener('click',()=>cardPv.classList.remove('show'));
+  function showCardPreview(url){
+    if(location.search.indexOf('diag=1')<0 || !cardPv) return;
+    cardPv.src=url; cardPv.classList.add('show');
+  }
+
   function shareDiag(extra){
     // DIAG は後方で const 宣言されている。ここで参照すると、呼ばれる順によっては
     // TDZ を踏む（README「すべての宣言が終わったあとで呼ぶこと」）。
@@ -1810,7 +1834,7 @@ addEventListener('unhandledrejection', function(e){
     shareBtn.disabled=true; shareMsg.textContent='';
     const text=shareText();
     let made=null;
-    try{ made=cardFileSync(); }
+    try{ made=cardFileSync(); showCardPreview(made.url); }
     catch(err){ shareMsg.textContent='画像を作れませんでした。文だけ投稿します';
       openXIntent(text); shareBtn.disabled=false; return; }
     const {blob,file}=made;

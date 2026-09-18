@@ -919,6 +919,33 @@ sharefunction csfunction csFfalse cliptrue sectrue app0 / copy 875KB
 判定は `location.search` をその場で見ている。`DIAG` 定数は後方で `const`
 宣言されており、ここで参照すると呼ばれる順によっては**TDZ を踏む**。
 
+### カードは DOM に付けてから書き出す
+
+**iOS で「画像の中身が何も表示されない」という報告が来た。**
+
+`document.createElement('canvas')` で作ったまま**DOM に付けずに**描いて
+`toDataURL()` すると、**iOS Safari はメモリが厳しいときに中身を捨てる**ことが
+ある。手元（Chromium）では起きないので、**測っても再現しない種類**。
+
+```js
+card.style.cssText='position:fixed;left:-20000px;top:0;width:1px;height:1px;';
+document.body.appendChild(card);   // 画面の外に置いてから描く
+…
+try{ url=card.toDataURL('image/png'); } finally{ card.remove(); }
+if(!url || url.length<2000) throw new Error('empty card');
+```
+
+**空だったらそこで止める。** 空の画像を共有シートに渡したり保存したりすると、
+「共有はできたのに中身が無い」という**いちばん分かりにくい壊れ方**になる。
+
+### 作った絵を `?diag=1` で画面に出す
+
+数字（バイト数）より**絵をそのまま見るほうが速い。** `?diag=1` のとき、
+シェアを押すと**実際に作られたカードがステージ一面に出る**（タップで消える）。
+
+**「空なのか」「渡し方が悪いのか」が一目で切り分く。**
+出れば canvas は正しく、X 側へ渡すところの問題。出なければ canvas の問題。
+
 ### 共有シートを閉じただけでも reject される
 
 ```js
