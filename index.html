@@ -358,6 +358,7 @@
       通った跡は得点になる。<br>
       車は止まらない ― 決められるのは曲がる方向だけ。<br>
       赤い敵車に触れるとクラッシュ。車は3台まで。<br>
+    茶色の岩は避けろ ― 乗ると即ミス。敵は乗るとスピンする。<br>
       SMOKE でスピンさせられるが、燃料を多く食う。燃料が尽きると減速し、やがて力尽きる。</p>
     <div class="icon">📱⤴</div>
     <p class="turn">横向きにしてください</p>
@@ -374,7 +375,7 @@
         <h2 id="ovt">咲耶<span class="g">Noun</span>ラリー</h2>
         <div id="ovsub">SakuyaNounRally</div>
         <div id="ovbuild"></div>
-        <p id="ovp">CNP11体を集めて、出口へ戻れ。通った跡が得点。<br>車は止まらない ― 曲がる方向だけ決める。<br>壁に当たると自動で右へ。行き止まりだけ跳ね返る。<br>赤い車に触れるとクラッシュ。車は3台。<br>SMOKE で敵はスピン。ただし燃料を多く食う。<br>燃料が尽きると減速し、8秒で力尽きる。<br><br>スマホ: 画面を押したまま倒す<br>PC: 矢印/WASD ・ Space=煙 ・ M=音 ・ P=一時停止</p>
+        <p id="ovp">CNP11体を集めて、出口へ戻れ。通った跡が得点。<br>車は止まらない ― 曲がる方向だけ決める。<br>壁に当たると自動で右へ。行き止まりだけ跳ね返る。<br>赤い車に触れるとクラッシュ。車は3台。<br>茶色の岩は避けろ ― 乗ると即ミス。敵は乗るとスピンする。<br>SMOKE で敵はスピン。ただし燃料を多く食う。<br>燃料が尽きると減速し、8秒で力尽きる。<br><br>スマホ: 画面を押したまま倒す<br>PC: 矢印/WASD ・ Space=煙 ・ M=音 ・ P=一時停止</p>
         <button id="btn">START</button>
         <button id="share" type="button">&#x1D54F; でシェア</button>
         <p id="sharemsg"></p>
@@ -577,7 +578,7 @@ addEventListener('unhandledrejection', function(e){
   // 咲耶カラーのピンクを基調にする。player のマゼンタと enemy の橙赤を離してあるのは、
   // 近い色にすると「自機」と「危険」が混ざって読めなくなるため
   const C={ road:'#2a2233', wall:'#5f3a5f', wall2:'#3d243d', ink:'#f2e9ef',
-           player:'#ff2d9b', enemy:'#ff4d2e', smoke:'#e6d6f2', rock:'#7a6b53', rock2:'#5a4d3a',
+           player:'#ff2d9b', enemy:'#ff4d2e', smoke:'#e6d6f2', rock:'#7a6b53', rock2:'#5a4d3a', rockEdge:'#ff6a3d',
            radarBg:'#120c18', wall2:'#3d243d', tire:'rgba(242,233,239,.11)', exit:'#ffd23f',
            tunnel:'#49e0d8' };
 
@@ -616,10 +617,14 @@ addEventListener('unhandledrejection', function(e){
         if((g[y][x-1]===0&&g[y][x+1]===0)||(g[y-1][x]===0&&g[y+1][x]===0)) g[y][x]=0;
       }
     }
-    // 岩は通路を塞ぐので、置く場所によっては迷路が分断され、自機からCNPへ
-    // 到達できなくなる。置く前に「その1マスぶんしか通路が減らないか」を確かめ、
-    // 分断するなら置き直す。これが無いと 6.3% の確率でクリア不可能な迷路が出る
-    // （うち 1.80% は全11体が到達不能で完全に詰み。3000回生成して実測）
+    // 岩を置く前に「その1マスぶんしか通路が減らないか」を確かめ、分断するなら
+    // 置き直す。
+    //
+    // F14 で岩が通れるようになったので、この判定は要らなくなる――と記録して
+    // いたが、実測したら逆だった。岩は通れても即ミスなので、判定を外すと
+    // 「CNPを取るには必ず死ななければならない迷路」が 43.7% で出る
+    // （岩を踏まずに行けないマスが平均11.5、最大443。300回生成して実測）。
+    // 壁だった頃の「詰み 6.3%」より悪い。判定は今のほうが重要。消さないこと
     let rocks=8;
     let reach=countReachable(g);
     for(let tr=0;tr<500&&rocks>0;tr++){
@@ -676,13 +681,19 @@ addEventListener('unhandledrejection', function(e){
     return n;
   }
 
-  // 3 はワープトンネルの口。車は通れるが「通路」ではない。openCells() が
-  // 外周を見ないので、CNPも敵の湧き位置も出口も口の上には絶対に来ない
+  // 3 はワープトンネルの口。2 は岩。どちらも車は通れるが「通路」ではない。
+  // openCells() が 0 しか拾わないので、CNPも敵の湧き位置も出口も、
+  // 口の上にも岩の上にも絶対に来ない。
+  // 岩は本家ラリーX(1980)と同じく「壁ではなく通路に置かれた危険物」。
+  // 自機は乗ると即ミス、敵は乗るとスピンする（F14）
   const isWall=(cx,cy)=>{
     if(cx<0||cy<0||cx>=COLS||cy>=ROWS) return true;
     const g=grid[cy][cx];
-    return g!==0 && g!==3;
+    return g!==0 && g!==2 && g!==3;
   };
+  const isRock=(cx,cy)=>
+    cx>=0 && cy>=0 && cx<COLS && cy<ROWS && grid[cy][cx]===2;
+  const onRock=c=>isRock(Math.floor(c.x/TILE), Math.floor(c.y/TILE));
   // スタート(1,1)から最も遠い通路マス。出口をここに置く。
   // スタート地点に置くと、11体そろえたあとわざとクラッシュすれば
   // 復活位置＝出口になって即クリアできてしまう
@@ -1011,10 +1022,19 @@ addEventListener('unhandledrejection', function(e){
       const ex=(exitCell[0]+.5)*TILE, ey=(exitCell[1]+.5)*TILE;
       if(Math.hypot(player.x-ex,player.y-ey)<CHAR_HIT){ score+=GOAL_BONUS; win(); return; }
     }
+    // 岩は敵をスピンさせる。煙幕と同じ機構を使い回す（F14）。
+    // 乗っている間ずっとかけ直さないよう、スピン中は見ない
+    for(const e of enemies){
+      if(e.spin<=0 && onRock(e)) e.spin=1.8;
+    }
     if(invul<=0) for(const e of enemies){
       if(e.spin>0) continue;
       if(Math.hypot(player.x-e.x,player.y-e.y)<15){ crash(); return; }
     }
+    // 自機が岩に乗ったら即ミス。復活直後の無敵中は効かない（敵と同じ扱い）。
+    // 敵との判定より後に置く ― 同時なら敵が優先でも結果は変わらないが、
+    // 「岩で死んだ」と分かるよう理由を分けている
+    if(invul<=0 && onRock(player)){ crash('ROCK'); return; }
     if(fuel<0) fuel=0;   // 燃料切れでは終わらない。速度は update の先頭で落としている
     if(state!=='play') return;
 
@@ -1285,8 +1305,28 @@ addEventListener('unhandledrejection', function(e){
       if(x<0||y<0||x>=COLS||y>=ROWS) continue;
       const px=x*TILE-cam.x, py=y*TILE-cam.y, g=grid[y][x];
       if(g===1){ ctx.fillStyle=C.wall; ctx.fillRect(px,py,TILE,TILE); ctx.fillStyle=C.wall2; ctx.fillRect(px,py+TILE-4,TILE,4); }
-      else if(g===2){ ctx.fillStyle=C.road; ctx.fillRect(px,py,TILE,TILE);
-        ctx.fillStyle=C.rock; ctx.fillRect(px+3,py+3,TILE-6,TILE-6); ctx.fillStyle=C.rock2; ctx.fillRect(px+3,py+TILE-8,TILE-6,5); }
+      // 岩。F14 で「乗ると即ミス」になったので、危険物として読めないといけない。
+      // 壁(紫の四角)とも敵(赤い車)とも違う「ギザギザ＋橙の縁」にした。
+      // 四角いままだと壁の色違いにしか見えず、避ける理由が伝わらない。
+      // 形はセル座標から決めるので毎フレーム揺れない
+      else if(g===2){
+        ctx.fillStyle=C.road; ctx.fillRect(px,py,TILE,TILE);
+        const h=((x*73856093)^(y*19349663))>>>0;
+        const mx=px+TILE/2, my=py+TILE/2, R=TILE/2-2;
+        ctx.beginPath();
+        for(let i=0;i<7;i++){
+          const a=i/7*Math.PI*2 + (((h>>(i*3))&7)/7-0.5)*0.4;
+          const r=R*(0.74+((h>>(i*2+1))&7)/7*0.26);
+          const vx=mx+Math.cos(a)*r, vy=my+Math.sin(a)*r;
+          if(i) ctx.lineTo(vx,vy); else ctx.moveTo(vx,vy);
+        }
+        ctx.closePath();
+        ctx.fillStyle=C.rock;  ctx.fill();
+        ctx.strokeStyle=C.rockEdge; ctx.lineWidth=1.5; ctx.stroke();
+        // 下側だけ影を落として立体に見せる（壁と同じ作法）
+        ctx.fillStyle=C.rock2;
+        ctx.fillRect(mx-R*0.45, my+R*0.35, R*0.9, 2.5);
+      }
       // ワープの口。吸い込まれる向きに輪を流して「ただの通路ではない」と見せる
       else if(g===3){ ctx.fillStyle='#0d1a1e'; ctx.fillRect(px,py,TILE,TILE);
         ctx.strokeStyle=C.tunnel; ctx.lineWidth=2;
@@ -1476,10 +1516,10 @@ addEventListener('unhandledrejection', function(e){
   // クラッシュ。CNP・スコア・迷路は引き継ぎ、自機と敵の配置だけやり直す。
   // 燃料は戻さない ― 戻すと残機が事実上の延命チケットになり、
   // 「時計」が燃料と残機の二重になって緊張感が薄れる
-  function crash(){
+  function crash(why){
     lives--;
     beep(90,.30,'sawtooth',.07);
-    if(lives<=0){ lose('CRASHED'); return; }
+    if(lives<=0){ lose(why==='ROCK' ? 'HIT A ROCK' : 'CRASHED'); return; }
     placePlayer();
     placeEnemies();
     smoke.length=0;
