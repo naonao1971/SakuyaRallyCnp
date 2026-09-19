@@ -761,7 +761,7 @@ addEventListener('unhandledrejection', function(e){
   // 敵が岩を踏んだら大破して、この秒数だけ盤面から消える。
   // 敵は自機を追ってくるので、岩の上を通れば誘い込める ― 自分も死ぬ場所へ
   // わざと連れていく、という駆け引きになる
-  const ENEMY_DOWN = 10.0;
+  const ENEMY_DOWN = 5.0;
   let heldDir=null, heldCode=null;   // いま押されている方向キー
 
   function mkCar(x,y,color,ai){
