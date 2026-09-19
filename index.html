@@ -358,7 +358,7 @@
       通った跡は得点になる。<br>
       車は止まらない ― 決められるのは曲がる方向だけ。<br>
       赤い敵車に触れるとクラッシュ。車は3台まで。<br>
-    茶色の岩は避けろ ― 乗ると即ミス。敵は乗るとスピンする。<br>
+    茶色の岩は避けろ ― 乗ると即ミス。敵は乗ると大破し、10秒戻らない。<br>
       SMOKE でスピンさせられるが、燃料を多く食う。燃料が尽きると減速し、やがて力尽きる。</p>
     <div class="icon">📱⤴</div>
     <p class="turn">横向きにしてください</p>
@@ -375,7 +375,7 @@
         <h2 id="ovt">咲耶<span class="g">Noun</span>ラリー</h2>
         <div id="ovsub">SakuyaNounRally</div>
         <div id="ovbuild"></div>
-        <p id="ovp">CNP11体を集めて、出口へ戻れ。通った跡が得点。<br>車は止まらない ― 曲がる方向だけ決める。<br>壁に当たると自動で右へ。行き止まりだけ跳ね返る。<br>赤い車に触れるとクラッシュ。車は3台。<br>茶色の岩は避けろ ― 乗ると即ミス。敵は乗るとスピンする。<br>SMOKE で敵はスピン。ただし燃料を多く食う。<br>燃料が尽きると減速し、8秒で力尽きる。<br><br>スマホ: 画面を押したまま倒す<br>PC: 矢印/WASD ・ Space=煙 ・ M=音 ・ P=一時停止</p>
+        <p id="ovp">CNP11体を集めて、出口へ戻れ。通った跡が得点。<br>車は止まらない ― 曲がる方向だけ決める。<br>壁に当たると自動で右へ。行き止まりだけ跳ね返る。<br>赤い車に触れるとクラッシュ。車は3台。<br>茶色の岩は避けろ ― 乗ると即ミス。敵は乗ると大破し、10秒戻らない。<br>SMOKE で敵はスピン。ただし燃料を多く食う。<br>燃料が尽きると減速し、8秒で力尽きる。<br><br>スマホ: 画面を押したまま倒す<br>PC: 矢印/WASD ・ Space=煙 ・ M=音 ・ P=一時停止</p>
         <button id="btn">START</button>
         <button id="share" type="button">&#x1D54F; でシェア</button>
         <p id="sharemsg"></p>
@@ -758,6 +758,10 @@ addEventListener('unhandledrejection', function(e){
   ];
   const LIVES_START = CARS.length;   // 車は3台
   const INVUL = 2.0;           // 復活後の無敵(秒)
+  // 敵が岩を踏んだら大破して、この秒数だけ盤面から消える。
+  // 敵は自機を追ってくるので、岩の上を通れば誘い込める ― 自分も死ぬ場所へ
+  // わざと連れていく、という駆け引きになる
+  const ENEMY_DOWN = 10.0;
   let heldDir=null, heldCode=null;   // いま押されている方向キー
 
   function mkCar(x,y,color,ai){
@@ -776,7 +780,27 @@ addEventListener('unhandledrejection', function(e){
     enemies=[];
     const far=cells.filter(([x,y])=>(x+y)>(COLS+ROWS)*0.55).sort(()=>Math.random()-.5);
     for(let i=0;i<4;i++){ const [x,y]=far[i]||cells[cells.length-1-i];
-      const e=mkCar((x+.5)*TILE,(y+.5)*TILE,C.enemy,true); e.dir={x:-1,y:0}; e.want={x:-1,y:0}; enemies.push(e); }
+      const e=mkCar((x+.5)*TILE,(y+.5)*TILE,C.enemy,true);
+      e.dir={x:-1,y:0}; e.want={x:-1,y:0};
+      // down は必ず数値で持たせる。undefined のままだと undefined<=0 も
+      // undefined>0 も false になり、大破の判定がどちらにも入らない
+      e.down=0;
+      enemies.push(e); }
+  }
+  // 大破した敵を湧き直す。自機から遠いところを選ぶ ― 復活と同時に事故ると
+  // 「何もしていないのに死んだ」になる。岩の上にも置かない（湧いた瞬間に
+  // また大破して、いつまでも戻ってこない）
+  function reviveEnemy(e){
+    const cells=openCells();
+    let best=null, bd=-1;
+    for(let i=0;i<24;i++){
+      const [x,y]=cells[(Math.random()*cells.length)|0];
+      const d=Math.hypot((x+.5)*TILE-player.x, (y+.5)*TILE-player.y);
+      if(d>bd){ bd=d; best=[x,y]; }
+    }
+    e.x=(best[0]+.5)*TILE; e.y=(best[1]+.5)*TILE;
+    e.dir={x:-1,y:0}; e.want={x:-1,y:0}; e.wantFresh=false; e.wantTimer=0;
+    e.spin=0; e.tunnelT=0; e.down=0;
   }
 
   // いま走っている車。1台失うごとに次のドライバーへ変わる
@@ -977,6 +1001,11 @@ addEventListener('unhandledrejection', function(e){
     }
     stepCar(player,k);
     for(const e of enemies){
+      if(e.down>0){                       // 大破中。時間だけ進めて湧き直す
+        e.down-=dt;
+        if(e.down<=0) reviveEnemy(e);
+        continue;
+      }
       if(e.tunnelT>0) e.tunnelT-=dt;
       e.speed = SPD_ENEMY * (e.tunnelT>0 ? TUNNEL_SLOW : 1);
       aiThink(e,k); stepCar(e,k);
@@ -1004,7 +1033,7 @@ addEventListener('unhandledrejection', function(e){
     for(let i=smoke.length-1;i>=0;i--){ const s=smoke[i]; s.life-=dt; s.r+=dt*11; if(s.life<=0) smoke.splice(i,1); }
 
     for(const e of enemies){
-      if(e.spin>0) continue;
+      if(e.down>0 || e.spin>0) continue;
       for(const s of smoke){ if(Math.hypot(e.x-s.x,e.y-s.y)<s.r+8){ e.spin=1.8; break; } }
     }
     for(let ti=0;ti<targets.length;ti++){
@@ -1022,13 +1051,18 @@ addEventListener('unhandledrejection', function(e){
       const ex=(exitCell[0]+.5)*TILE, ey=(exitCell[1]+.5)*TILE;
       if(Math.hypot(player.x-ex,player.y-ey)<CHAR_HIT){ score+=GOAL_BONUS; win(); return; }
     }
-    // 岩は敵をスピンさせる。煙幕と同じ機構を使い回す（F14）。
-    // 乗っている間ずっとかけ直さないよう、スピン中は見ない
+    // 岩を踏んだ敵は大破して ENEMY_DOWN 秒だけ盤面から消える。
+    // 煙幕はスピンのまま ― あちらは燃料と引き換えの足止め、岩は地形の罠、
+    // と役割を分けてある
     for(const e of enemies){
-      if(e.spin<=0 && onRock(e)) e.spin=1.8;
+      if(e.down<=0 && onRock(e)){
+        e.down=ENEMY_DOWN;
+        for(let i=0;i<7;i++) smoke.push({x:e.x,y:e.y,life:0.5,r:4+i});
+        beep(160,.16,'sawtooth',.05);
+      }
     }
     if(invul<=0) for(const e of enemies){
-      if(e.spin>0) continue;
+      if(e.down>0 || e.spin>0) continue;
       if(Math.hypot(player.x-e.x,player.y-e.y)<15){ crash(); return; }
     }
     // 自機が岩に乗ったら即ミス。復活直後の無敵中は効かない（敵と同じ扱い）。
@@ -1360,7 +1394,7 @@ addEventListener('unhandledrejection', function(e){
       }
     }
     const placed=[]; for(const tg of targets){ if(!tg.got) drawChar(tg,placed); }
-    for(const e of enemies) drawCar(e);
+    for(const e of enemies) if(e.down<=0) drawCar(e);
     // 無敵の間は点滅させる。点滅していること自体が「いまは当たらない」の合図
     if(invul<=0 || ((t*9)|0)%2===0) drawCar(player);
 
@@ -1448,7 +1482,7 @@ addEventListener('unhandledrejection', function(e){
       const px=(tg.x/TILE)*sx, py=(tg.y/TILE)*sy;
       g.fillStyle='#ffffff'; g.fillRect(px-2.5*u,py-2.5*u,5*u,5*u);
       g.fillStyle=tg.ch.c;   g.fillRect(px-1.5*u,py-1.5*u,3*u,3*u); }
-    for(const e of enemies){ g.fillStyle=C.enemy;
+    for(const e of enemies){ if(e.down>0) continue; g.fillStyle=C.enemy;
       g.fillRect((e.x/TILE)*sx-1*u,(e.y/TILE)*sy-1*u,2*u,2*u); }
     g.fillStyle=C.player;
     g.fillRect((player.x/TILE)*sx-1.5*u,(player.y/TILE)*sy-1.5*u,3*u,3*u);
