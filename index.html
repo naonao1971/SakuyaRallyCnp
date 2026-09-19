@@ -1044,7 +1044,7 @@ addEventListener('unhandledrejection', function(e){
         rosterFlash[ti]=ROSTER.flash;   // どの枠が埋まったか視線を誘導する
         // 11体そろっても即クリアにしない。出口が開き、そこへ戻るまでが一走り。
         // 戻る道中も塗れるので、最後に得点を伸ばす余地が残る
-        if(got===NTARGET){ exitOpen=true; beep(880,.18,'triangle',.07); }
+        if(got===NTARGET){ exitOpen=true; exitFanfare(); }
       }
     }
     if(exitOpen){
@@ -1175,6 +1175,24 @@ addEventListener('unhandledrejection', function(e){
     seq.forEach((n,i)=> bgmVoice(n, t0+i*0.11, 0.10, 'square', 0.07));
     bgmVoice(81, t0+4*0.11, 0.42, 'square', 0.07);
     bgmVoice(57, t0+4*0.11, 0.42, 'triangle', 0.09);
+  }
+
+  // 11体そろって出口が開いた合図。
+  // 以前はここも beep 一発だったが、11体目を拾った音(930Hz)と同じ瞬間・
+  // ほぼ同じ高さ(880Hz)で鳴るので取得音に飲まれ、鳴っていないのと同じだった。
+  // 0.1秒だけ後ろへずらし、跳ねる5度を二度くり返してから伸ばす。
+  // クリアのジングルとは別物にしてある ― あちらは終わりの音、これは
+  // 「まだ走る」という始まりの音
+  function exitFanfare(){
+    const a=audio(); if(!a) return;
+    const t0=a.currentTime+0.10;           // 取得音(0.07秒)が鳴り終わってから
+    // E5→B5 を二度、最後に E6 を伸ばす。BGM は Am なので E は5度＝濁らない
+    bgmVoice(76, t0,      0.09, 'square',   0.075);
+    bgmVoice(83, t0+0.10, 0.09, 'square',   0.075);
+    bgmVoice(76, t0+0.20, 0.09, 'square',   0.075);
+    bgmVoice(83, t0+0.30, 0.09, 'square',   0.075);
+    bgmVoice(88, t0+0.40, 0.46, 'square',   0.085);
+    bgmVoice(64, t0+0.40, 0.46, 'triangle', 0.075);   // 下を足して厚みを出す
   }
 
   /* ===== クリア演出の動画（F13）=====
