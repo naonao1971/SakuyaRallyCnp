@@ -435,8 +435,27 @@
 // それを赤帯で出すと、遊びに来た人には「ゲームが壊れている」ようにしか
 // 見えない。実際、公開した直後にその報告が来た。
 // 黙って捨てるのではなく console には残し、?diag=1 なら帯にも出す
+// 調べるための表示を出してよいか。判定はここ1か所に置く（帯は2種類 ―
+// エラー帯とレイアウト帯 ― あるので、別々に書くとどちらかが取り残される）。
+//
+// ホーム画面アプリだけ条件が違う。iOS は「ホーム画面に追加」した時点の
+// URL を起動URLとして焼き付けるので、?diag=1 の画面から追加すると、
+// 以後アプリを開くたびに永久に赤い帯が出る。閉じても消えない。
+// だから**アプリで出すには diag=app と書かせる。** うっかり焼き付く
+// diag=1 では出さない。ブラウザでは今までどおり diag=1 で出る
+function isStandaloneApp(){
+  try{
+    return !!(navigator.standalone
+      || (window.matchMedia && matchMedia('(display-mode:standalone)').matches));
+  }catch(e){ return false; }
+}
+function diagOn(){
+  var q=location.search;
+  if(q.indexOf('diag=app') >= 0) return true;
+  return !isStandaloneApp() && q.indexOf('diag=1') >= 0;
+}
 var firstErr=null, errCount=0;
-var ERR_DIAG = location.search.indexOf('diag=1') >= 0;
+var ERR_DIAG = diagOn();
 function showErr(msg,line,file){
   var where = file ? String(file).split('/').pop().split('?')[0] : '';
   var outside = !where && !line && /Script error/i.test(String(msg));
@@ -2156,7 +2175,15 @@ addEventListener('unhandledrejection', function(e){
   //   ・アプリとSafariで保存領域が別なので、片方を消しても残る
   //   ・プライベートウィンドウでは保存できず、挙動が読めない
   // 調べるための道具が、調べる邪魔をしていた。URLを閉じれば必ず消える形にする
-  const DIAG = location.search.indexOf('diag=1') >= 0;
+  //
+  // 「URLを閉じれば消える」が成り立たない場所が1つだけある ― ホーム画面アプリ。
+  // 判定は diagOn()（最初の <script>）に置いた。理由もそちらに書いてある
+  const DIAG = diagOn();
+  // 焼き付いた ?diag=1 をアドレスからも消しておく。起動URLそのものは
+  // 変えられないが、ここから先の共有やリロードには持ち越さない
+  if(isStandaloneApp() && location.search.indexOf('diag=1') >= 0){
+    try{ history.replaceState(null, '', location.pathname); }catch(e){}
+  }
   const svhProbe=document.createElement('div');
   svhProbe.style.cssText='position:fixed;top:0;left:0;width:0;height:100svh;'+
     'visibility:hidden;pointer-events:none;';
