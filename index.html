@@ -427,12 +427,25 @@
 // ファイル名の無い「Script error.」はこのページの外から来ている ―
 // 拡張機能やコンテンツブロッカーが注入したスクリプトの類。ゲームの不具合ではない。
 // 出どころを書かずに出していたため、無関係のエラーでゲームが壊れて見えていた
+//
+// このページの外から来たエラーは、赤い帯を出さない。
+// ファイル名も行番号も無い「Script error.」は、別オリジンのスクリプトが
+// 投げたもの ― このページは外部スクリプトを1つも読んでいないので、
+// 拡張機能やコンテンツブロッカーが注入したものに限られる。
+// それを赤帯で出すと、遊びに来た人には「ゲームが壊れている」ようにしか
+// 見えない。実際、公開した直後にその報告が来た。
+// 黙って捨てるのではなく console には残し、?diag=1 なら帯にも出す
 var firstErr=null, errCount=0;
+var ERR_DIAG = location.search.indexOf('diag=1') >= 0;
 function showErr(msg,line,file){
+  var where = file ? String(file).split('/').pop().split('?')[0] : '';
+  var outside = !where && !line && /Script error/i.test(String(msg));
+  if(outside && !ERR_DIAG){
+    try{ console.warn('[このページ外のスクリプトのエラー。帯には出さない]', msg); }catch(e){}
+    return;
+  }
   errCount++;
   if(firstErr===null){
-    var where = file ? String(file).split('/').pop().split('?')[0] : '';
-    var outside = !where && /Script error/i.test(String(msg));
     firstErr='ERROR: '+(outside?'［このページ外］':'')+msg
       +(where?' '+where:'')+(line?' @'+line:'');
   }
