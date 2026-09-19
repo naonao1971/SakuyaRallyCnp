@@ -1,4 +1,4 @@
-# 咲耶Nounラリー — SakuyaNounRally ⌐◨-◨ (proto)
+# 咲耶Nounラリー — SakuyaNounRally ⌐◨-◨
 
 旧称は「咲耶ラリーCNP / NOUN RALLY」。`localStorage` のキー
 （`nounrally_best` / `nounrally_mute`）は**変えていない**。変えると

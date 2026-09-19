@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>咲耶Nounラリー ⌐◨-◨ (proto v4)</title>
+<title>咲耶Nounラリー ⌐◨-◨</title>
 <meta name="description" content="迷路に散らばった CNP 11体を集めて出口へ戻る、ラリーX系のブラウザゲーム。通った跡が得点になる。">
 <!-- SNS に貼ったときの見え方（OGP / Twitter Card）。
      og:url と og:image は仕様上「絶対URL」でなければならないので、
@@ -53,7 +53,6 @@
   h1{font-size:clamp(15px,4vw,22px);letter-spacing:.14em;text-align:center;margin-bottom:6px;font-weight:800;}
   h1 .g{color:var(--pink);}
   h1 .en{opacity:.55;font-size:.62em;letter-spacing:.18em;}
-  h1 .ver{opacity:.4;font-size:.62em;}
 
   /* 既定は縦積み・幅基準。PCと縦持ちはこれで足りる。
      DOM順は横並び(パッドが左)を優先しているので、縦積みでは order で並べ替える */
@@ -348,7 +347,7 @@
 <body>
 <div id="wrap">
   <h1>咲耶<span class="g">Noun</span>ラリー <span class="g">&#x2310;&#x25E8;-&#x25E8;</span>
-    <span class="en">SakuyaNounRally</span> <span class="ver">proto v4</span></h1>
+    <span class="en">SakuyaNounRally</span></h1>
 <!-- 縦持ちの画面。タイトルと遊び方を見せ、遊ぶには横向きへ促す -->
   <div id="rotate" role="alert" aria-live="assertive">
     <img src="assets/rally_title.jpg" alt="ラリーカーを運転する咲耶とノグルズのナビゲーター">
@@ -390,7 +389,7 @@
       </div>
     </div>
   </div>
-  <div id="hint">proto v4 ・ CNP11体は咲耶スクランブルと同じ正式アート＋正式名 ・ 自機は ⌐◨-◨ カー</div>
+  <div id="hint">CNP11体は咲耶スクランブルと同じ正式アート＋正式名 ・ 自機は ⌐◨-◨ カー</div>
   <!-- ガイドラインの「公式を騙らない」に対応する表記。タイトルにIP名を掲げている
        ので、非公式であることは常時読める場所に置いておく（咲耶スクランブルと同文） -->
   <section id="rank" aria-label="ランキング TOP10" hidden>
