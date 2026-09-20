@@ -2083,7 +2083,22 @@ addEventListener('unhandledrejection', function(e){
 
   const KEYDIR={ArrowUp:{x:0,y:-1},KeyW:{x:0,y:-1},ArrowDown:{x:0,y:1},KeyS:{x:0,y:1},
                 ArrowLeft:{x:-1,y:0},KeyA:{x:-1,y:0},ArrowRight:{x:1,y:0},KeyD:{x:1,y:0}};
+  // 文字を打っている間は、ゲームの操作を1つも拾わないこと。
+  //
+  // これが無いと、ニックネーム欄で **a d p s w と空白が打てない**。
+  // WASD と矢印は preventDefault で消され、Space は煙、P はポーズ、
+  // M はミュートに取られる（実測: 「wasd master」が「mter」になった）。
+  // 矢印キーでカーソルも動かせない。
+  // 物理キーボードでだけ起きるので、スマホで試している限り気づけない
+  const typingInField = e => {
+    const t=e.target;
+    if(!t || t===document.body) return false;
+    if(t.isContentEditable) return true;
+    const tag=(t.tagName||'').toLowerCase();
+    return tag==='input' || tag==='textarea' || tag==='select';
+  };
   addEventListener('keydown',e=>{
+    if(typingInField(e)) return;
     if(e.code==='KeyM'){ muted=!muted; audio(); applyMute(); return; }
     if(e.code==='KeyP'||e.code==='Escape'){ e.preventDefault(); setPaused(!paused); return; }
     if(e.code==='Space'){ e.preventDefault(); emitting=true; return; }
@@ -2103,6 +2118,7 @@ addEventListener('unhandledrejection', function(e){
   // 放置すると「押しっぱなし」のまま固まり、戻ってきたときに勝手に曲がり続ける
   addEventListener('blur',()=>{ heldCode=null; heldDir=null; emitting=false; });
   addEventListener('keyup',e=>{
+    if(typingInField(e)) return;
     if(e.code==='Space') emitting=false;
     // 離したのが「いま保持している向き」のときだけ解除する。別の向きを
     // 押し足した後で古い方を離しても、新しい向きは保持したままにする
