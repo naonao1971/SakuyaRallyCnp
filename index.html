@@ -151,6 +151,31 @@
     width:30px;height:30px;margin:-15px 0 0 -15px;border-radius:50%;
     background:var(--car,var(--pink));opacity:.85;box-shadow:0 0 0 2px rgba(242,233,239,.35);}
   #joyring.on,#joyknob.on{display:block;}
+  /* 指の置き場所を教える影。「タップしないとコントローラーが出ないので
+     操作方法が分からない」という声があった。実際にはどこを押しても出るが、
+     何も無い画面では押していいことが伝わらない。
+     ・最初に曲がるまでの間だけ出す（分かった人の視界からは消える）
+     ・点線と拍動で「飾りではなく押すもの」に見せる
+     ・本物のスティック(#joyring)より下のz-indexに置き、指を置いたら
+       そちらが上に出る */
+  #joyhint{position:fixed;z-index:29;pointer-events:none;display:none;
+    width:64px;height:64px;margin:-32px 0 0 -32px;border-radius:50%;
+    border:2px dashed rgba(242,233,239,.28);background:rgba(21,15,26,.28);
+    animation:joypulse 1.8s ease-in-out infinite;}
+  #joyhint::after{content:'';position:absolute;left:50%;top:50%;
+    width:28px;height:28px;margin:-14px 0 0 -14px;border-radius:50%;
+    background:rgba(242,233,239,.20);}
+  /* 「左下を押す」と誤解されないように、文字で本当の決まりを言う */
+  #joyhintcap{position:fixed;z-index:29;pointer-events:none;display:none;
+    transform:translate(-50%,-50%);white-space:nowrap;
+    font:600 11px/1.3 ui-monospace,monospace;letter-spacing:.04em;
+    color:rgba(242,233,239,.62);text-shadow:0 1px 3px #000,0 0 6px #000;}
+  body.joyhint #joyhint, body.joyhint #joyhintcap{display:block;}
+  @keyframes joypulse{
+    0%,100%{opacity:.55;transform:scale(1);}
+    50%    {opacity:1;  transform:scale(1.10);}
+  }
+  @media (prefers-reduced-motion:reduce){ #joyhint{animation:none;opacity:.8;} }
   #side{display:flex;flex-direction:column;align-items:center;gap:8px;}
   /* レーダーをコース外へ出す。立ち絵(4:3)と迷路(33:25=1.32)はほぼ同比率なので、
      同じ幅で縦に並べると計器パネル2枚に見える。
@@ -412,6 +437,8 @@
 </div>
 
 <div id="crash" hidden role="alert"></div>
+<div id="joyhint" aria-hidden="true"></div>
+<div id="joyhintcap" aria-hidden="true">どこでも押したまま倒す</div>
 <div id="joyring" aria-hidden="true"></div>
 <div id="joyknob" aria-hidden="true"></div>
 
@@ -874,6 +901,10 @@ addEventListener('unhandledrejection', function(e){
     shareBtn.classList.remove('show'); shareMsg.textContent='';
     updateRankVisible();                   // 遊んでいる間はランキングを畳む
     if(cardPv) cardPv.classList.remove('show');
+    // 走り直すたびに影を出し直す。joyTaught は下のほうで let 宣言している
+    // ので、newGame() を「宣言より前に」呼ぶと TDZ で落ちる。いまは START の
+    // クリックからしか呼ばれないので届いている（起動時には呼ばないこと）
+    joyTaught=false;
     cancelAnimationFrame(rafId); rafId=requestAnimationFrame(loop);
     bgmStart();
   }
@@ -985,6 +1016,7 @@ addEventListener('unhandledrejection', function(e){
       // 止めていた間の時間が dt にまとめて乗らないよう、時計を合わせ直す
       resync=true; bgmStart();
     }
+    joyHintUpdate();
   }
   function resetPause(show){
     paused=false;
@@ -1594,7 +1626,8 @@ addEventListener('unhandledrejection', function(e){
     // 縦持ちの間は進行を止める。last は毎回更新しているので、横に戻したときに
     // 溜まった時間がまとめて進むことはない
     if(!orientationBlocked && !paused) update(dt);
-    if(state==='play'){ render(); renderRadar(); rafId=requestAnimationFrame(loop); }
+    if(state==='play'){ render(); renderRadar(); joyHintUpdate();
+      rafId=requestAnimationFrame(loop); }
   }
   // クラッシュ。CNP・スコア・迷路は引き継ぎ、自機と敵の配置だけやり直す。
   // 燃料は戻さない ― 戻すと残機が事実上の延命チケットになり、
@@ -1623,6 +1656,7 @@ addEventListener('unhandledrejection', function(e){
     finish('GAME OVER', r+' &nbsp;/&nbsp; SCORE '+score+' (CNP '+got+'/'+NTARGET+
       ' &nbsp;踏破 '+painted+'マス)'); }
   function finish(title,sub){
+    joyHintUpdate();                       // 幕が出たら影は消す
     if(score>best){ best=score; store.set('nounrally_best',best); }
     updateRankVisible();                   // 結果画面では出す
     rankOnFinish();
@@ -2068,6 +2102,30 @@ addEventListener('unhandledrejection', function(e){
   const ring=document.getElementById('joyring'), knob=document.getElementById('joyknob');
   let joy=null;
 
+  // 指の置き場所を教える影。押していない間だけ出し、一度でも曲がったら
+  // その走りではもう出さない ― 分かった人の視界から消すため。
+  // 出す場所はコースの左下。ただし文字では「どこでも押したまま倒す」と言う。
+  // 影だけ置くと「左下を押すもの」と誤解され、この操作のいちばん良いところ
+  // （どこを押しても指の下にスティックが出る）が伝わらない
+  const joyHint=document.getElementById('joyhint');
+  const joyHintCap=document.getElementById('joyhintcap');
+  let joyTaught=false;
+  function joyHintUpdate(){
+    const show = isMobileDevice && !joyTaught && state==='play' && !paused && !joy;
+    if(show){
+      const r=cv.getBoundingClientRect();
+      // 燃料バーは canvas 座標で下から16px。そこへ重ねない
+      const x=r.left+58, y=r.bottom-72;
+      joyHint.style.left=x+'px'; joyHint.style.top=y+'px';
+      // 文字は中央揃えなので、そのまま x に置くとコースの左端からはみ出す。
+      // 半分の幅ぶんだけ内側へ寄せる（実測: 124px あり、9px はみ出していた）
+      const cw=joyHintCap.offsetWidth||120;
+      const cx=Math.min(Math.max(x, r.left+cw/2+6), r.right-cw/2-6);
+      joyHintCap.style.left=cx+'px'; joyHintCap.style.top=(y-52)+'px';
+    }
+    document.body.classList.toggle('joyhint', show);
+  }
+
   // 4方向へ量子化する。素朴に |dx|>|dy| で決めると 45度付近で毎フレーム
   // 左右にばたつくので、乗り換えには JOY_HYST 倍の優勢を要求する
   function joyPick(dx,dy,cur){
@@ -2097,6 +2155,7 @@ addEventListener('unhandledrejection', function(e){
     joy={id:e.pointerId, ox:e.clientX, oy:e.clientY, dir:null,
          sx:e.clientX, sy:e.clientY, t0:performance.now(), onPause:overPause(e)};
     joyShow(joy.ox,joy.oy,joy.ox,joy.oy);
+    joyHintUpdate();
   });
   addEventListener('pointermove',e=>{
     if(!joy || e.pointerId!==joy.id) return;
@@ -2114,6 +2173,7 @@ addEventListener('unhandledrejection', function(e){
     if(!d) return;
     const changed = !joy.dir || d.x!==joy.dir.x || d.y!==joy.dir.y;
     joy.dir=d;
+    if(!joyTaught){ joyTaught=true; joyHintUpdate(); }
     heldDir={...d}; heldCode='joy';
     // wantFresh は「向きを変えた瞬間」だけ立てる。毎フレーム立てると後退の門が
     // 開きっぱなしになり、以前直した勝手なUターンが戻ってくる
@@ -2127,6 +2187,7 @@ addEventListener('unhandledrejection', function(e){
       && performance.now()-joy.t0 < 500;
     joy=null; ring.classList.remove('on'); knob.classList.remove('on');
     if(heldCode==='joy'){ heldCode=null; heldDir=null; }
+    joyHintUpdate();
     if(tap) setPaused(true);
   };
   addEventListener('pointerup',joyEnd);
