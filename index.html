@@ -128,9 +128,10 @@
     width:100%;height:100%;object-fit:contain;background:#000;}
   #cardpv.show{display:block;}
 
-  #clearvid{position:absolute;inset:0;z-index:7;display:none;
+  /* 演出の動画。クリアとゲームオーバーで2本あるので、id ではなくクラスで書く */
+  .cutvid{position:absolute;inset:0;z-index:7;display:none;
     width:100%;height:100%;object-fit:contain;background:#000;}
-  #clearvid.show{display:block;}
+  .cutvid.show{display:block;}
   /* 動画中に出す「タップで飛ばす」。演出を見たい人の邪魔にならない濃さ */
   #vidskip{position:absolute;right:8px;bottom:8px;z-index:8;display:none;
     font:inherit;font-size:10px;letter-spacing:.08em;padding:5px 9px;border-radius:12px;
@@ -393,7 +394,8 @@
       <canvas id="c" width="614" height="384"></canvas>
       <button id="pause" type="button" aria-label="一時停止">&#x23F8;</button>
       <img id="cardpv" alt="シェアされるカード">
-      <video id="clearvid" playsinline preload="none" aria-hidden="true"></video>
+      <video id="clearvid" class="cutvid" playsinline preload="none" aria-hidden="true"></video>
+      <video id="overvid"  class="cutvid" playsinline preload="none" aria-hidden="true"></video>
       <button id="vidskip" type="button">タップで飛ばす</button>
       <div id="ov">
         <h2 id="ovt">咲耶<span class="g">Noun</span>ラリー</h2>
@@ -1258,61 +1260,76 @@ addEventListener('unhandledrejection', function(e){
     bgmVoice(64, t0+0.40, 0.46, 'triangle', 0.075);   // 下を足して厚みを出す
   }
 
-  /* ===== クリア演出の動画（F13）=====
-     ゴールしたときだけ流す。クラッシュや燃料切れでは出さない。
+  /* ===== 幕間の動画（F13 クリア / F16 ゲームオーバー）=====
+     クリアとゲームオーバーで1本ずつ流す。途中のクラッシュでは出さない
+     （残機が減るたびに待たされるのは苦痛。最後の1台を失ったときだけ）。
+
      preload="none" にしてあり、src を入れるのは START を押したとき。
-     クリアまで行かない人に 5.7MB を押しつけない。
+     読み込む人を、遊ぶと決めた人だけに絞る。
      iOS はユーザー操作を経ていない再生を拒むので、その START のタップで
-     一度「無音で再生→即停止」して解錠しておく（音声の unlock と同じ理屈） */
-  const CLEAR_VIDEO_SRC = 'assets/rally_clear.mp4';
-  const vidEl   = document.getElementById('clearvid');
+     一度「無音で再生→即停止」して解錠しておく（音声の unlock と同じ理屈）。
+
+     2本になったので、1本のときのべた書きをやめて作る側にまとめた。
+     咲耶スクランブル側の createCutsceneVideo() と同じ形 ― 片方だけ直して
+     もう片方を取り残す、という事故を防ぐため */
   const vidSkip = document.getElementById('vidskip');
-  let vidFailed=false, vidUnlocked=false, vidPlaying=false, vidDone=null;
 
-  if(vidEl){
-    vidEl.addEventListener('error', ()=>{ vidFailed=true; endClearVideo(); });
-    vidEl.addEventListener('ended', ()=>endClearVideo());
+  function makeCutscene(elId, src){
+    const el=document.getElementById(elId);
+    let failed=false, unlocked=false, playing=false, done=null;
+
+    function stop(){
+      if(!playing) return;
+      playing=false;
+      el.pause(); try{ el.currentTime=0; }catch(e){}
+      el.classList.remove('show'); vidSkip.classList.remove('show');
+      const d=done; done=null;
+      if(d) d();
+    }
+    if(el){
+      el.addEventListener('error', ()=>{ failed=true; stop(); });
+      el.addEventListener('ended', ()=>stop());
+      el.addEventListener('click', ()=>stop());
+    }
+    return {
+      unlock(){
+        if(!el || unlocked) return;
+        unlocked=true;
+        if(!el.src) el.src=src;
+        el.muted=true;
+        const pr=el.play();
+        if(pr && pr.then) pr.then(()=>{ el.pause(); try{el.currentTime=0;}catch(e){} }).catch(()=>{});
+      },
+      // 流せるなら流して true。流せないなら false（呼び側がそのまま結果へ進む）
+      play(cb){
+        // readyState>=3 は「最後まで途切れずに流せる見込み」。
+        // 間に合っていないのに挟むと、止まった絵で待たされるだけになる
+        if(!el || failed || !el.src || el.readyState<3 || !el.videoWidth) return false;
+        done=cb; playing=true;
+        try{ el.currentTime=0; }catch(e){}
+        el.muted=muted;
+        el.classList.add('show'); vidSkip.classList.add('show');
+        const pr=el.play();
+        if(pr && pr.catch) pr.catch(()=>{
+          // 音付きが断られたら無音で映像だけ出す（iOSの省電力モード等）
+          el.muted=true;
+          const q=el.play();
+          if(q && q.catch) q.catch(()=>{ failed=true; stop(); });
+        });
+        return true;
+      },
+      stop,
+      syncMuted(){ if(el && playing) el.muted=muted; },
+    };
   }
 
-  function unlockClearVideo(){
-    if(!vidEl || vidUnlocked) return;
-    vidUnlocked=true;
-    if(!vidEl.src) vidEl.src=CLEAR_VIDEO_SRC;
-    vidEl.muted=true;
-    const pr=vidEl.play();
-    if(pr && pr.then) pr.then(()=>{ vidEl.pause(); try{vidEl.currentTime=0;}catch(e){} }).catch(()=>{});
-  }
+  const clearVid = makeCutscene('clearvid', 'assets/rally_clear.mp4');
+  const overVid  = makeCutscene('overvid',  'assets/rally_crash.mp4');
+  function unlockClearVideo(){ clearVid.unlock(); overVid.unlock(); }
+  function endClearVideo(){ clearVid.stop(); overVid.stop(); }
 
-  // 流せるなら流して true。流せないなら false（呼び側がそのまま結果へ進む）
-  function playClearVideo(done){
-    // readyState>=3 は「最後まで途切れずに流せる見込み」。
-    // 間に合っていないのに挟むと、止まった絵で待たされるだけになる
-    if(!vidEl || vidFailed || !vidEl.src || vidEl.readyState<3 || !vidEl.videoWidth) return false;
-    vidDone=done; vidPlaying=true;
-    try{ vidEl.currentTime=0; }catch(e){}
-    vidEl.muted=muted;
-    vidEl.classList.add('show'); vidSkip.classList.add('show');
-    const pr=vidEl.play();
-    if(pr && pr.catch) pr.catch(()=>{
-      // 音付きが断られたら無音で映像だけ出す（iOSの省電力モード等）
-      vidEl.muted=true;
-      const q=vidEl.play();
-      if(q && q.catch) q.catch(()=>{ vidFailed=true; endClearVideo(); });
-    });
-    return true;
-  }
-
-  function endClearVideo(){
-    if(!vidPlaying){ return; }
-    vidPlaying=false;
-    vidEl.pause(); try{ vidEl.currentTime=0; }catch(e){}
-    vidEl.classList.remove('show'); vidSkip.classList.remove('show');
-    const d=vidDone; vidDone=null;
-    if(d) d();
-  }
   // 途中で飛ばせるようにする。長い演出を毎回見せられるのは苦痛
   if(vidSkip) vidSkip.addEventListener('click',e=>{ e.stopPropagation(); endClearVideo(); });
-  if(vidEl)   vidEl.addEventListener('click',()=>endClearVideo());
 
   const muteBtn=document.getElementById('mute');
   function applyMute(){
@@ -1323,7 +1340,7 @@ addEventListener('unhandledrejection', function(e){
     store.set('nounrally_mute', muted?'1':'0');
   }
   muteBtn.addEventListener('click',e=>{ e.stopPropagation(); muted=!muted; audio(); applyMute();
-    if(vidEl && vidPlaying) vidEl.muted=muted; });   // 再生中の切替にも追従させる
+    clearVid.syncMuted(); overVid.syncMuted(); });   // 再生中の切替にも追従させる
   applyMute();
 
   // ⌐◨-◨ ノグルズ。咲耶スクランブル側の drawNoggles() と同じ作りで、
@@ -1643,18 +1660,23 @@ addEventListener('unhandledrejection', function(e){
   }
 
   function win(){
-    state='over'; cleared=true;
+    state='over'; cleared=true; joyHintUpdate();
     const show=()=>finish('CLEAR!', 'SCORE '+score+' &nbsp;/&nbsp; 踏破 '+painted+'マス ('+
       Math.round(painted/openCells().length*100)+'%) &nbsp;/&nbsp; 残燃料 '+Math.round(fuel));
     bgmStop();
     // 動画が流せるならそちらに任せ、ジングルは鳴らさない（音がぶつかる）。
     // 流せないときは今までどおりジングル＋即結果
-    if(playClearVideo(show)) return;
+    if(clearVid.play(show)) return;
     jingle(); show();
   }
-  function lose(r){ state='over'; cleared=false; bgmStop();
-    finish('GAME OVER', r+' &nbsp;/&nbsp; SCORE '+score+' (CNP '+got+'/'+NTARGET+
-      ' &nbsp;踏破 '+painted+'マス)'); }
+  function lose(r){
+    state='over'; cleared=false; bgmStop(); joyHintUpdate();
+    const show=()=>finish('GAME OVER', r+' &nbsp;/&nbsp; SCORE '+score+' (CNP '+got+'/'+NTARGET+
+      ' &nbsp;踏破 '+painted+'マス)');
+    // クリアと同じ扱い。流せるなら動画に任せ、流せないときは即結果へ
+    if(overVid.play(show)) return;
+    show();
+  }
   function finish(title,sub){
     joyHintUpdate();                       // 幕が出たら影は消す
     if(score>best){ best=score; store.set('nounrally_best',best); }
