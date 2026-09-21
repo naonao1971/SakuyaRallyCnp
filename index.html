@@ -28,6 +28,15 @@
      apple-touch-iconは「ホーム画面に追加」でiOSが使う -->
 <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png" />
 <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+<!-- ホーム画面に追加したときの全画面。既定任せにせず、明示しておく。
+     iOS 17 の「Webアプリとして開く」の既定が入るかどうかがここで決まるので、
+     手順の案内(全画面モーダル)を出す以上、必ず宣言しておくこと -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="咲耶ラリー">
+<meta name="theme-color" content="#150f1a">
+<link rel="manifest" href="manifest.json">
 <style>
   /* 咲耶カラーのピンクを基調にする。危険色(敵・燃料警告)は橙赤へ逃がしてある。
      ピンクのまま赤を使うと、CNP11体のうち紫〜桃のhue(トワ262/エマ292/マカミ322/
@@ -75,6 +84,42 @@
   #ov{position:absolute;inset:0;z-index:8;display:flex;flex-direction:column;align-items:center;justify-content:center;
     gap:8px;background:rgba(21,15,26,.9);text-align:center;padding:16px;overflow:hidden;}
   #ov.hidden{display:none;}
+
+  /* 「全画面で遊ぶ」。STARTより控えめにする ― 主役はあくまで START */
+  .fsbtn{font:inherit;font-size:12px;font-weight:700;letter-spacing:.04em;
+    padding:7px 14px;border-radius:999px;cursor:pointer;
+    border:1px solid rgba(242,233,239,.30);background:rgba(21,15,26,.55);
+    color:rgba(242,233,239,.82);}
+  .fsbtn:hover{border-color:rgba(242,233,239,.55);color:var(--ink);}
+  .fsbtn[hidden]{display:none;}
+
+  /* ホーム画面への追加を案内する幕。iOSの共有シートは撮れないので図で描く。
+     実機のスクショは iOS の版ごとに変わって古くなるが、図なら古くならない */
+  #fsmodal{position:fixed;inset:0;z-index:120;display:none;
+    background:rgba(8,5,12,.86);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);
+    overflow-y:auto;-webkit-overflow-scrolling:touch;padding:20px 14px;}
+  #fsmodal.show{display:block;}
+  #fsbox{max-width:420px;margin:0 auto;background:#1b1422;color:var(--ink);
+    border:1px solid rgba(242,233,239,.16);border-radius:14px;padding:18px 16px 16px;
+    box-shadow:0 18px 50px rgba(0,0,0,.55);text-align:center;}
+  #fsbox h3{margin:0 0 10px;font-size:17px;letter-spacing:.04em;}
+  #fsbox .lead{margin:0 0 16px;font-size:12.5px;line-height:1.8;
+    color:rgba(242,233,239,.78);}
+  #fsbox .lead b{color:var(--pink);}
+  .fsstep{display:flex;gap:11px;align-items:flex-start;text-align:left;
+    padding:12px 0;border-top:1px solid rgba(242,233,239,.10);}
+  .fsstep .n{flex:0 0 22px;height:22px;border-radius:50%;background:var(--pink);
+    color:#150f1a;font:800 11px/22px ui-monospace,monospace;text-align:center;}
+  .fsstep .t{flex:1 1 auto;font-size:12.5px;line-height:1.7;}
+  .fsstep .t em{font-style:normal;color:#ffd23f;font-weight:800;}
+  .fsstep svg{display:block;margin:8px 0 0;width:100%;max-width:210px;height:auto;}
+  #fsbox .close{margin-top:14px;font:inherit;font-size:13px;font-weight:800;
+    width:100%;padding:11px;border-radius:10px;cursor:pointer;
+    border:0;background:var(--pink);color:#150f1a;}
+  #fsbox .foot{margin:12px 0 0;font-size:11.5px;line-height:1.7;
+    color:rgba(242,233,239,.55);}
+  #fsbox .note{margin:10px 0 0;font-size:11.5px;line-height:1.7;color:#ffd23f;}
+  #fsbox .note[hidden]{display:none;}
   /* ポーズ。コースの中央に置く。プレイ中はほぼ透明で邪魔をせず、止めている間だけ
      はっきり出す。canvas の上 44px は HUD 帯なので、帯を除いた「走る場所」の
      中心へ寄せてある(44/384 = 11.5% の半分だけ下げて 55.7%)。
@@ -393,6 +438,7 @@
       塗り進めると青いガソリン缶が落ちる ― まだ塗っていない道にだけ出る。</p>
     <div class="icon">📱⤴</div>
     <p class="turn">横向きにしてください</p>
+    <button class="fsbtn" type="button" hidden>&#x1F3AE; 全画面で遊ぶ</button>
     <p class="note">本作は CryptoNinja / CryptoNinja Partners の非公式ファンアートです</p>
   </div>
   <div id="play">
@@ -409,6 +455,7 @@
         <div id="ovbuild"></div>
         <p id="ovp">CNP11体を集めて、出口へ戻れ。通った跡が得点。<br>車は止まらない ― 曲がる方向だけ決める。<br>壁に当たると自動で右へ。行き止まりだけ跳ね返る。<br>赤い車に触れるとクラッシュ。車は3台。<br>茶色の岩は避けろ ― 乗ると即ミス。敵は乗ると大破し、5秒戻らない。<br>SMOKE で敵はスピン。ただし燃料を多く食う。<br>燃料が尽きると減速し、8秒で力尽きる。<br>塗り進めると青いガソリン缶が落ちる ― 未踏の道にだけ出る。<br>ゴールすると残燃料・残機・踏破率がボーナスになる。<br><br>スマホ: 画面を押したまま倒す<br>PC: 矢印/WASD ・ Space=煙 ・ M=音 ・ P=一時停止</p>
         <button id="btn">START</button>
+        <button class="fsbtn" type="button" hidden>&#x1F3AE; 全画面で遊ぶ</button>
         <button id="share" type="button">&#x1D54F; でシェア</button>
         <p id="sharemsg"></p>
       </div>
@@ -445,6 +492,84 @@
 </div>
 
 <div id="crash" hidden role="alert"></div>
+<!-- ホーム画面に追加する手順。iPhone は全画面APIが無く、ここが唯一の道。
+     図は実機スクショではなく描いたもの ― スクショは iOS の版が上がるたびに
+     古くなるが、要点だけ描いた図なら古くならない -->
+<div id="fsmodal" role="dialog" aria-modal="true" aria-labelledby="fstitle" hidden>
+  <div id="fsbox">
+    <h3 id="fstitle">&#x1F3AE; 全画面で遊ぶ</h3>
+    <p class="lead">iPhone では、<b>ホーム画面に追加</b>すると<br>
+      Safari のアドレスバーなしで遊べます。</p>
+
+    <div class="fsstep">
+      <div class="n">1</div>
+      <div class="t">画面の下にある <em>共有</em> ボタンをタップ
+        <svg viewBox="0 0 210 78" role="img" aria-label="画面下のツールバーにある共有ボタン">
+          <rect x="1" y="1" width="208" height="76" rx="9" fill="#120c18"
+                stroke="rgba(242,233,239,.18)"/>
+          <rect x="12" y="14" width="186" height="30" rx="6" fill="#241b2d"/>
+          <text x="105" y="34" text-anchor="middle" font-size="11"
+                font-family="ui-monospace,monospace" fill="rgba(242,233,239,.45)">
+            rally.naoblock.jp</text>
+          <rect x="12" y="52" width="186" height="16" rx="5" fill="#241b2d"/>
+          <circle cx="105" cy="60" r="13" fill="none" stroke="#ff2d9b" stroke-width="2"/>
+          <path d="M105 54 v9 M101 57 l4-4 4 4" stroke="#ff2d9b" stroke-width="1.8"
+                fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+          <rect x="99" y="62" width="12" height="2" fill="#ff2d9b"/>
+        </svg>
+      </div>
+    </div>
+
+    <div class="fsstep">
+      <div class="n">2</div>
+      <div class="t">出てきた一覧から <em>ホーム画面に追加</em> をタップ
+        <svg viewBox="0 0 210 78" role="img" aria-label="共有シートのホーム画面に追加の項目">
+          <rect x="1" y="1" width="208" height="76" rx="9" fill="#120c18"
+                stroke="rgba(242,233,239,.18)"/>
+          <rect x="12" y="10" width="186" height="17" rx="5" fill="#241b2d"/>
+          <rect x="22" y="16" width="72" height="5" rx="2.5" fill="rgba(242,233,239,.22)"/>
+          <rect x="12" y="31" width="186" height="20" rx="5" fill="#2e2338"
+                stroke="#ff2d9b" stroke-width="1.6"/>
+          <rect x="21" y="36" width="10" height="10" rx="2" fill="none"
+                stroke="#ff2d9b" stroke-width="1.5"/>
+          <path d="M26 39 v4 M24 41 h4" stroke="#ff2d9b" stroke-width="1.4"
+                stroke-linecap="round"/>
+          <text x="39" y="45" font-size="9.5" font-family="sans-serif" fill="#f2e9ef">
+            ホーム画面に追加</text>
+          <rect x="12" y="55" width="186" height="17" rx="5" fill="#241b2d"/>
+          <rect x="22" y="61" width="58" height="5" rx="2.5" fill="rgba(242,233,239,.22)"/>
+        </svg>
+      </div>
+    </div>
+
+    <div class="fsstep">
+      <div class="n">3</div>
+      <div class="t"><em>Webアプリとして開く</em> をオンにして <em>追加</em>
+        <svg viewBox="0 0 210 78" role="img" aria-label="Webアプリとして開くをオンにして追加">
+          <rect x="1" y="1" width="208" height="76" rx="9" fill="#120c18"
+                stroke="rgba(242,233,239,.18)"/>
+          <rect x="12" y="10" width="120" height="16" rx="5" fill="#241b2d"/>
+          <rect x="21" y="15" width="46" height="6" rx="3" fill="rgba(242,233,239,.28)"/>
+          <rect x="146" y="9" width="52" height="18" rx="9" fill="#ff2d9b"/>
+          <text x="172" y="22" text-anchor="middle" font-size="10"
+                font-family="sans-serif" font-weight="700" fill="#150f1a">追加</text>
+          <rect x="12" y="38" width="186" height="28" rx="6" fill="#2e2338"
+                stroke="#ff2d9b" stroke-width="1.6"/>
+          <text x="22" y="56" font-size="9.5" font-family="sans-serif" fill="#f2e9ef">
+            Webアプリとして開く</text>
+          <rect x="158" y="45" width="30" height="16" rx="8" fill="#49e0d8"/>
+          <circle cx="180" cy="53" r="6" fill="#ffffff"/>
+        </svg>
+      </div>
+    </div>
+
+    <p class="note" id="fsnote" hidden></p>
+    <p class="foot">追加したら、<b>ホーム画面のアイコンからゲームを起動</b>してください。<br>
+      Safari から開いたままでは全画面になりません。</p>
+    <button class="close" type="button" id="fsclose">閉じる</button>
+  </div>
+</div>
+
 <div id="joyhint" aria-hidden="true"></div>
 <div id="joyhintcap" aria-hidden="true">どこでも押したまま倒す</div>
 <div id="joyring" aria-hidden="true"></div>
@@ -2385,6 +2510,59 @@ addEventListener('unhandledrejection', function(e){
   // 数字を見るまで原因を勘で決めないこと。safe-area だと思って余白を足しても、
   // viewport-fit=cover を指定していない今は env(safe-area-inset-*) が全部 0 なので
   // 何も変わらない ― 引くものが無い
+  /* ===== 全画面（F19）=====
+     iPhone には全画面APIが無い。あるのは「ホーム画面に追加」だけなので、
+     そこへ案内する。Android・PC・iPad では本物の全画面APIが効くので、
+     案内を出さずにその場で全画面にする。
+
+     **効かないボタンを出さないこと。** 押しても何も起きないボタンほど
+     信用を失うものはない。すでにホーム画面アプリで動いているなら、
+     用が済んでいるのでボタン自体を出さない */
+  const fsEl = document.documentElement;
+  const fsReq = fsEl.requestFullscreen || fsEl.webkitRequestFullscreen || null;
+  const IS_IOS = /iP(hone|od|ad)/.test(navigator.userAgent)
+    || (navigator.platform==='MacIntel' && navigator.maxTouchPoints>1);
+  // iOS の Chrome / Firefox / Edge は中身が WebKit で、UA だけが違う
+  const IOS_OTHER = IS_IOS && /CriOS|FxiOS|EdgiOS|OPiOS/.test(navigator.userAgent);
+  const fsModal = document.getElementById('fsmodal');
+  const fsNote  = document.getElementById('fsnote');
+
+  function fsOpen(){
+    if(IOS_OTHER){
+      fsNote.textContent='このブラウザでは追加できないことがあります。'
+        +'うまくいかないときは Safari で開いてください。';
+      fsNote.hidden=false;
+    }
+    fsModal.hidden=false; fsModal.classList.add('show');
+    fsModal.scrollTop=0;
+  }
+  function fsClose(){ fsModal.classList.remove('show'); fsModal.hidden=true; }
+
+  function fsSetup(){
+    // すでに全画面で動いているなら、ボタンの用は無い
+    if(isStandaloneApp()){ return; }
+    for(const b of document.querySelectorAll('.fsbtn')){
+      b.hidden=false;
+      b.addEventListener('click', e=>{
+        e.stopPropagation();
+        if(fsReq && !IS_IOS){
+          // 本物の全画面。断られたら案内に切り替える（黙って何も起きないのが最悪）
+          try{
+            const r=fsReq.call(fsEl);
+            if(r && r.catch) r.catch(()=>fsOpen());
+          }catch(err){ fsOpen(); }
+          return;
+        }
+        fsOpen();
+      });
+    }
+  }
+  fsSetup();
+  document.getElementById('fsclose').addEventListener('click',e=>{ e.stopPropagation(); fsClose(); });
+  fsModal.addEventListener('click',e=>{ if(e.target===fsModal) fsClose(); });
+  addEventListener('keydown',e=>{ if(e.key==='Escape' && fsModal.classList.contains('show')){
+    e.stopPropagation(); fsClose(); } }, true);
+
   // ---- はみ出しの自己申告（B4の計測）----
   // 「起動直後だけ崩れていて、何か触ると直ることがある」という証言があるので、
   // 1回きりではなく何度も測り、そのつど最新の値に書き換える。
