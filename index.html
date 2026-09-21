@@ -1068,7 +1068,29 @@ addEventListener('unhandledrejection', function(e){
     placeEnemies();
     targets=[];
     const pool=cells.filter(([x,y])=>!(x<5&&y<5)).sort(()=>Math.random()-.5);
-    for(let i=0;i<NTARGET;i++){ const [x,y]=pool[i]; targets.push({x:(x+.5)*TILE,y:(y+.5)*TILE,got:false,ch:CNP[i]}); }
+    // 隣のマスに2体重ねて出さない。CHAR_SIZE=22 に対して TILE=24 なので、
+    // 隣のマス(距離1)に2体出ると見た目でほぼ触れ合う。実測(cnpspread.mjs):
+    // 何もしないと200回中139回(70%)、隣のマスに2体出ていた。
+    // dx*dx+dy*dy<=1 は「直交で隣」だけを弾く判定。対角(距離√2)は
+    // 見た目で触れないので許す ― 厳しくしすぎると通路の細い迷路で
+    // 11体そろわなくなる
+    const picked=[];
+    for(const c of pool){
+      if(picked.length>=NTARGET) break;
+      const [x,y]=c;
+      if(picked.every(([px,py])=>{ const dx=x-px, dy=y-py; return dx*dx+dy*dy>1; })) picked.push(c);
+    }
+    // 保険。通路が極端に狭い迷路で条件を満たす11個が集まらなかったら、
+    // 残りは条件を緩めて埋める(11体割れを避ける ― これが起きても隣接が
+    // ゼロにならないだけで、ゲームは今までどおり成立する)
+    if(picked.length<NTARGET){
+      const have=new Set(picked.map(([x,y])=>x+','+y));
+      for(const c of pool){
+        if(picked.length>=NTARGET) break;
+        if(!have.has(c[0]+','+c[1])) picked.push(c);
+      }
+    }
+    for(let i=0;i<NTARGET;i++){ const [x,y]=picked[i]; targets.push({x:(x+.5)*TILE,y:(y+.5)*TILE,got:false,ch:CNP[i]}); }
     smoke=[]; cam={x:0,y:0}; score=0; got=0; fuel=FUEL_START; emitting=false; t=0;
     cans=[]; canNext=0;
     lives=LIVES_START; invul=0; dryT=0; carName=0;
