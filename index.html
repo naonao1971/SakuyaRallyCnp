@@ -1392,7 +1392,7 @@ addEventListener('unhandledrejection', function(e){
   const STEP_FAST = 0.098;   // 燃料が少ないときのテンポ
   const hz = n => 440*Math.pow(2,(n-69)/12);
 
-  let bgmOn=false, bgmStep=0, bgmNext=0, bgmTimer=null;
+  let bgmOn=false, bgmStep=0, bgmNext=0, bgmTimer=null, bgmToken=0;
 
   function bgmVoice(note, at, dur, type, vol){
     const a=actx;
@@ -1421,13 +1421,35 @@ addEventListener('unhandledrejection', function(e){
       bgmStep++;
     }
   }
+  // newGame() は unlockClearVideo() の直後にこれを呼ぶ(F16で動画が2本になった)。
+  // 動画の初回の読み込み・再生が、iOSではここでAudioContextをまた suspended
+  // に戻すことがある ― 咲耶スクランブルが「初回のスタートだけ音が鳴らず、
+  // 2回目以降は鳴る」の原因をジャイロの許可ダイアログと特定していて
+  // （あちらのstartButtonのコメント参照）、この症状と完全に一致する。
+  // このゲームにジャイロは無いが、動画のunlock(muted再生)が同じ役目を
+  // 果たしている可能性が高い。
+  //
+  // resume() を呼びっぱなしにせず、実際に running へ変わるのを待ってから
+  // 最初の音を並べること。凍ったままの currentTime を基準に予約すると、
+  // 短い音符は resume が追いつく前に「開始即終了」で潰れて鳴らない
+  // （resume が終わってから currentTime を読み直せば、この問題は起きない）。
+  //
+  // resume が遅れて解決しても大丈夫にしてある。unlockAudio は pointerdown/
+  // keydown のたびに毎回呼ばれるので、プレイ中に何か押すたびに resume() が
+  // 再発行され、その「どれか」が通った瞬間にこの Promise も一緒に解決する
   function bgmStart(){
     const a=audio(); if(!a) return;
-    bgmOn=true; bgmStep=0; bgmNext=a.currentTime+0.05;
-    if(!bgmTimer) bgmTimer=setInterval(bgmTick,25);
+    bgmOn=true;
+    const token=++bgmToken;
+    const ready = a.state==='running' ? Promise.resolve() : a.resume().catch(()=>{});
+    ready.then(()=>{
+      if(token!==bgmToken || !bgmOn) return;   // 待っている間に止められていた
+      bgmStep=0; bgmNext=actx.currentTime+0.05;
+      if(!bgmTimer) bgmTimer=setInterval(bgmTick,25);
+    });
   }
   function bgmStop(){
-    bgmOn=false;
+    bgmOn=false; bgmToken++;   // 待っている resume が後から鳴らし始めるのを防ぐ
     if(bgmTimer){ clearInterval(bgmTimer); bgmTimer=null; }
   }
   // クリアのジングル。BGMを止めてから鳴らす
