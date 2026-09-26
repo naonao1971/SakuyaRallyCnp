@@ -1,746 +1,185 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ja">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>咲耶Nounラリー ⌐◨-◨</title>
-<meta name="description" content="迷路に散らばった CNP 11体を集めて出口へ戻る、ラリーX系のブラウザゲーム。通った跡が得点になる。">
-<!-- SNS に貼ったときの見え方（OGP / Twitter Card）。
-     og:url と og:image は仕様上「絶対URL」でなければならないので、
-     独自ドメインが決まるまで書けずにいた。CNAME の rally.naoblock.jp に合わせる。
-     ドメインを変えるときは、この4か所（og:url / og:image / twitter:image）も
-     必ず一緒に直すこと。相対パスにすると多くのSNSで画像が出ない -->
-<meta property="og:type" content="website">
-<meta property="og:site_name" content="咲耶Nounラリー">
-<meta property="og:title" content="咲耶Nounラリー / SakuyaNounRally">
-<meta property="og:description" content="迷路に散らばった CNP 11体を集めて出口へ戻る、ラリーX系のブラウザゲーム。通った跡が得点になる。">
-<meta property="og:url" content="https://rally.naoblock.jp/">
-<meta property="og:image" content="https://rally.naoblock.jp/assets/rally_title.jpg">
-<meta property="og:image:width" content="1200">
-<meta property="og:image:height" content="674">
-<meta property="og:image:alt" content="ラリーカーを運転する咲耶と、地図を広げるノグルズのナビゲーター">
-<meta property="og:locale" content="ja_JP">
-<meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="咲耶Nounラリー / SakuyaNounRally">
-<meta name="twitter:description" content="迷路に散らばった CNP 11体を集めて出口へ戻る、ラリーX系のブラウザゲーム。通った跡が得点になる。">
-<meta name="twitter:image" content="https://rally.naoblock.jp/assets/rally_title.jpg">
-<!-- アイコンを明示しないとブラウザが /favicon.ico を自動で取りに行き、404になる。
-     apple-touch-iconは「ホーム画面に追加」でiOSが使う -->
-<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png" />
-<link rel="apple-touch-icon" href="apple-touch-icon.png" />
-<!-- ホーム画面に追加したときの全画面。既定任せにせず、明示しておく。
-     iOS 17 の「Webアプリとして開く」の既定が入るかどうかがここで決まるので、
-     手順の案内(全画面モーダル)を出す以上、必ず宣言しておくこと -->
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="咲耶ラリー">
-<meta name="theme-color" content="#150f1a">
-<link rel="manifest" href="manifest.json">
-<style>
-  /* 咲耶カラーのピンクを基調にする。危険色(敵・燃料警告)は橙赤へ逃がしてある。
-     ピンクのまま赤を使うと、CNP11体のうち紫〜桃のhue(トワ262/エマ292/マカミ322/
-     タルト352)とも混ざって「危険」が読めなくなるため（咲耶スクランブルも
-     magenta #FF2D9B と danger #FF4D2E を別に持っている） */
-  :root{
-    --bg:#150f1a; --ink:#f2e9ef; --road:#2a2233; --wall:#5f3a5f; --wall2:#3d243d;
-    --pink:#ff2d9b;      /* 徴: 自機・強調 */
-    --enemy:#ff4d2e;     /* 危険: 敵車・燃料警告 */
-    --gold:#e8c56a;      /* 二次: 枠 */
-  }
-  *{box-sizing:border-box;margin:0;padding:0;}
-  html{height:100%;}
-  /* ランキング(F8)を下に置くため、ページは縦にスクロールできる必要がある。
-     height:100% だと中身がはみ出した分を切り落とすので min-height にする。
-     中央寄せもやめる ― 中身が画面より高いとき、中央寄せは上へはみ出した分が
-     スクロールで取り戻せなくなる（B4 で踏んだのと同じ形の罠） */
-  body{background:var(--bg);color:var(--ink);min-height:100%;
-    font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
-    display:flex;align-items:flex-start;justify-content:center;
-    overflow-x:hidden;-webkit-user-select:none;user-select:none;}
-  #wrap{width:min(96vw,560px);}
-  h1{font-size:clamp(15px,4vw,22px);letter-spacing:.14em;text-align:center;margin-bottom:6px;font-weight:800;}
-  h1 .g{color:var(--pink);}
-  h1 .en{opacity:.55;font-size:.62em;letter-spacing:.18em;}
-
-  /* 既定は縦積み・幅基準。PCと縦持ちはこれで足りる。
-     DOM順は横並び(パッドが左)を優先しているので、縦積みでは order で並べ替える */
-  /* touch-action:none は body ではなくここに置く。スティックは canvas の
-     pointerdown でしか始まらないので、ゲーム領域だけ止めれば足りる。
-     body に置くとページ全体がスクロールできなくなり、ランキングが置けない */
-  #play{display:flex;flex-direction:column;align-items:center;gap:10px;
-    touch-action:none;}
-  #stage{order:1;} #side{order:2;}
-  /* 16:10。高さ側で頭打ちになる端末では 4:3 だと横幅が余っていた
-     （iPhone 15 で53px、Pro Max で66px）。詳しくは README */
-  #stage{position:relative;width:100%;aspect-ratio:8/5;background:#000;
-    border:3px solid var(--wall);border-radius:8px;box-shadow:5px 5px 0 var(--wall2);overflow:hidden;}
-  canvas{display:block;width:100%;height:100%;image-rendering:pixelated;}
-  /* ステージは overflow:hidden なので、中身が背より高くなると上下が切り落とされる。
-     いちばん下にある START / RETRY ボタンが真っ先に消えて「押せない」になる。
-     縮んでよいのは説明文だけ。見出しとボタンは flex:0 0 auto で死守し、
-     説明文に min-height:0 + overflow-y:auto を与えて、そこだけ縮ませる。
-     min-height:0 が無いと flex アイテムは中身より小さくならず、縮まない */
-  #ov{position:absolute;inset:0;z-index:8;display:flex;flex-direction:column;align-items:center;justify-content:center;
-    gap:8px;background:rgba(21,15,26,.9);text-align:center;padding:16px;overflow:hidden;}
-  #ov.hidden{display:none;}
-
-  /* 「全画面で遊ぶ」。STARTより控えめにする ― 主役はあくまで START */
-  .fsbtn{font:inherit;font-size:12px;font-weight:700;letter-spacing:.04em;
-    padding:7px 14px;border-radius:999px;cursor:pointer;
-    border:1px solid rgba(242,233,239,.30);background:rgba(21,15,26,.55);
-    color:rgba(242,233,239,.82);}
-  .fsbtn:hover{border-color:rgba(242,233,239,.55);color:var(--ink);}
-  .fsbtn[hidden]{display:none;}
-
-  /* ホーム画面への追加を案内する幕。iOSの共有シートは撮れないので図で描く。
-     実機のスクショは iOS の版ごとに変わって古くなるが、図なら古くならない */
-  #fsmodal{position:fixed;inset:0;z-index:120;display:none;
-    background:rgba(8,5,12,.86);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);
-    overflow-y:auto;-webkit-overflow-scrolling:touch;padding:20px 14px;}
-  #fsmodal.show{display:block;}
-  #fsbox{max-width:420px;margin:0 auto;background:#1b1422;color:var(--ink);
-    border:1px solid rgba(242,233,239,.16);border-radius:14px;padding:18px 16px 16px;
-    box-shadow:0 18px 50px rgba(0,0,0,.55);text-align:center;}
-  #fsbox h3{margin:0 0 10px;font-size:17px;letter-spacing:.04em;}
-  #fsbox .lead{margin:0 0 16px;font-size:12.5px;line-height:1.8;
-    color:rgba(242,233,239,.78);}
-  #fsbox .lead b{color:var(--pink);}
-  .fsstep{display:flex;gap:11px;align-items:flex-start;text-align:left;
-    padding:12px 0;border-top:1px solid rgba(242,233,239,.10);}
-  .fsstep .n{flex:0 0 22px;height:22px;border-radius:50%;background:var(--pink);
-    color:#150f1a;font:800 11px/22px ui-monospace,monospace;text-align:center;}
-  .fsstep .t{flex:1 1 auto;font-size:12.5px;line-height:1.7;}
-  .fsstep .t em{font-style:normal;color:#ffd23f;font-weight:800;}
-  .fsstep svg{display:block;margin:8px 0 0;width:100%;max-width:210px;height:auto;}
-  #fsbox .close{margin-top:14px;font:inherit;font-size:13px;font-weight:800;
-    width:100%;padding:11px;border-radius:10px;cursor:pointer;
-    border:0;background:var(--pink);color:#150f1a;}
-  #fsbox .foot{margin:12px 0 0;font-size:11.5px;line-height:1.7;
-    color:rgba(242,233,239,.55);}
-  #fsbox .note{margin:10px 0 0;font-size:11.5px;line-height:1.7;color:#ffd23f;}
-  #fsbox .note[hidden]{display:none;}
-  /* ポーズ。コースの中央に置く。プレイ中はほぼ透明で邪魔をせず、止めている間だけ
-     はっきり出す。canvas の上 44px は HUD 帯なので、帯を除いた「走る場所」の
-     中心へ寄せてある(44/384 = 11.5% の半分だけ下げて 55.7%)。
-     プレイ中は pointer-events:none。ここを押せるようにすると、画面のどこでも
-     触れて出るスティックの真ん中に死角ができ、中央では曲がれなくなる。
-     プレイ中のポーズは「中央で、動かさずに離したとき」だけ canvas 側で拾う */
-  #pause{position:absolute;left:50%;top:55.7%;transform:translate(-50%,-50%);z-index:6;
-    display:none;width:52px;height:52px;border-radius:50%;
-    border:2px solid rgba(242,233,239,.55);background:rgba(21,15,26,.55);
-    color:var(--ink);font:inherit;font-size:20px;line-height:1;
-    opacity:.13;transition:opacity .15s ease;pointer-events:none;}
-  #pause.show{display:block;}
-  #pause.on{opacity:.96;pointer-events:auto;}
-  #pause.on:active{transform:translate(-50%,-50%) scale(.94);}
-  #ov h2{flex:0 0 auto;font-size:clamp(18px,5vw,30px);letter-spacing:.06em;}
-  #ov h2 .g{color:var(--pink);}
-  /* 英語表記。リザルト(CLEAR!/GAME OVER)では邪魔なので、そのとき隠す */
-  #ovsub{flex:0 0 auto;margin-top:-2px;font-size:clamp(9px,2.2vh,11px);
-    letter-spacing:.24em;opacity:.5;}
-  #ovsub.hidden{display:none;}
-  /* どのビルドを見ているかを画面から分かるようにする。
-     「直したのに変わらない」と言われたとき、古いものを見ているのか直って
-     いないのかが区別できず何度も往復した。document.lastModified はサーバが
-     返す更新日時なので、ビルド手順を足さずに版が分かる */
-  #ovbuild{flex:0 0 auto;margin-top:-4px;font-size:9px;letter-spacing:.06em;opacity:.32;}
-  #ovbuild.hidden{display:none;}
-  #ov p{flex:0 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;
-    font-size:clamp(11px,2.8vh,13px);opacity:.85;line-height:1.6;}
-  /* シェア（F9）。RETRY の下に置く。結果を見ている場所がいちばん押しやすい */
-  #share{flex:0 0 auto;display:none;margin-top:6px;font:inherit;font-size:11px;
-    letter-spacing:.08em;padding:7px 16px;border-radius:14px;cursor:pointer;
-    border:1px solid rgba(232,197,106,.55);background:rgba(232,197,106,.12);color:var(--gold);}
-  #share.show{display:block;}
-  /* 説明行はシェアボタンと一緒に出す。常に置いておくと、スタート画面でも
-     1行ぶん場所を取り、ただでさえきつい START ボタンの余白を削ってしまう
-     （実測: 余白が -19px から -30px に減っていた） */
-  #sharemsg{display:none;flex:0 0 auto;font-size:9.5px;opacity:.6;margin-top:3px;min-height:1em;}
-  #share.show + #sharemsg{display:block;}
-
-  #btn{flex:0 0 auto;margin-top:4px;font:inherit;font-weight:800;letter-spacing:.1em;padding:9px 20px;
-    background:var(--ink);color:var(--bg);border:none;border-radius:7px;box-shadow:3px 3px 0 var(--pink);}
-  #btn:active{transform:translate(2px,2px);box-shadow:1px 1px 0 var(--pink);}
-
-  /* 初期化で落ちたときだけ出る帯。押すと消える */
-  /* クリア演出の動画（F13）。canvas に毎フレーム描き込むのではなく、
-     ステージの上に重ねる。display:none にすると再生が止まる環境があるので
-     出し入れは opacity ではなく visibility+z-index ではなく、素直に class で */
-  /* ?diag=1 のとき、実際に作られたカードをそのまま出す。
-     「画像が空だ」という報告を、数字ではなく絵で確かめるため */
-  #cardpv{position:absolute;inset:0;z-index:9;display:none;
-    width:100%;height:100%;object-fit:contain;background:#000;}
-  #cardpv.show{display:block;}
-
-  /* 演出の動画。クリアとゲームオーバーで2本あるので、id ではなくクラスで書く */
-  .cutvid{position:absolute;inset:0;z-index:7;display:none;
-    width:100%;height:100%;object-fit:contain;background:#000;}
-  .cutvid.show{display:block;}
-  /* 動画中に出す「タップで飛ばす」。演出を見たい人の邪魔にならない濃さ */
-  #vidskip{position:absolute;right:8px;bottom:8px;z-index:8;display:none;
-    font:inherit;font-size:10px;letter-spacing:.08em;padding:5px 9px;border-radius:12px;
-    border:1px solid rgba(242,233,239,.35);background:rgba(21,15,26,.55);
-    color:var(--ink);opacity:.55;}
-  #vidskip.show{display:block;}
-
-  #crash{position:fixed;left:0;right:0;top:0;z-index:99;
-    background:#7d1f1f;color:#ffe9e9;font-size:11px;line-height:1.5;
-    padding:6px 10px;word-break:break-all;}
-
-  /* バーチャルスティック。触れた場所に出る浮動式で、指を離すと消える。
-     当たり判定は持たせない（pointer-events:none） */
-  /* クリア時の得点の内訳。読み飛ばされない程度に目立たせ、説明文より前に出す */
-  #ovp .bonus{display:inline-block;margin-top:6px;font-size:.92em;
-    color:rgba(242,233,239,.72);line-height:1.8;}
-  #ovp .bonus .b{color:#ffd23f;font-weight:800;}
-
-  #joyring{position:fixed;z-index:30;pointer-events:none;display:none;
-    width:64px;height:64px;margin:-32px 0 0 -32px;border-radius:50%;
-    border:2px solid rgba(242,233,239,.30);background:rgba(21,15,26,.30);}
-  #joyknob{position:fixed;z-index:31;pointer-events:none;display:none;
-    width:30px;height:30px;margin:-15px 0 0 -15px;border-radius:50%;
-    background:var(--car,var(--pink));opacity:.85;box-shadow:0 0 0 2px rgba(242,233,239,.35);}
-  #joyring.on,#joyknob.on{display:block;}
-  /* 指の置き場所を教える影。「タップしないとコントローラーが出ないので
-     操作方法が分からない」という声があった。実際にはどこを押しても出るが、
-     何も無い画面では押していいことが伝わらない。
-     ・最初に曲がるまでの間だけ出す（分かった人の視界からは消える）
-     ・点線と拍動で「飾りではなく押すもの」に見せる
-     ・本物のスティック(#joyring)より下のz-indexに置き、指を置いたら
-       そちらが上に出る */
-  #joyhint{position:fixed;z-index:29;pointer-events:none;display:none;
-    width:64px;height:64px;margin:-32px 0 0 -32px;border-radius:50%;
-    border:2px dashed rgba(242,233,239,.28);background:rgba(21,15,26,.28);
-    animation:joypulse 1.8s ease-in-out infinite;}
-  #joyhint::after{content:'';position:absolute;left:50%;top:50%;
-    width:28px;height:28px;margin:-14px 0 0 -14px;border-radius:50%;
-    background:rgba(242,233,239,.20);}
-  /* 「左下を押す」と誤解されないように、文字で本当の決まりを言う */
-  #joyhintcap{position:fixed;z-index:29;pointer-events:none;display:none;
-    transform:translate(-50%,-50%);white-space:nowrap;
-    font:600 11px/1.3 ui-monospace,monospace;letter-spacing:.04em;
-    color:rgba(242,233,239,.62);text-shadow:0 1px 3px #000,0 0 6px #000;}
-  body.joyhint #joyhint, body.joyhint #joyhintcap{display:block;}
-  @keyframes joypulse{
-    0%,100%{opacity:.55;transform:scale(1);}
-    50%    {opacity:1;  transform:scale(1.10);}
-  }
-  @media (prefers-reduced-motion:reduce){ #joyhint{animation:none;opacity:.8;} }
-  #side{display:flex;flex-direction:column;align-items:center;gap:8px;}
-  /* レーダーをコース外へ出す。立ち絵(4:3)と迷路(33:25=1.32)はほぼ同比率なので、
-     同じ幅で縦に並べると計器パネル2枚に見える。
-     height:auto を明示すること。上の canvas{height:100%} を受けると
-     aspect-ratio が無視されて縦に伸び、右列を食いつぶす */
-  #radar{display:block;width:100%;height:auto;aspect-ratio:33/25;
-    background:#120c18;border:2px solid rgba(232,197,106,.5);border-radius:6px;
-    image-rendering:pixelated;}
-  /* 運転席の窓。咲耶スクランブルのパイロット窓と同じく琥珀のヘアラインで囲う */
-  #pilot{display:block;width:132px;max-width:100%;border:2px solid rgba(232,197,106,.5);border-radius:6px;}
-  /* ミュートは SMOKE と同じ行に置く。独立した行にすると右列の縦を食い、
-     iPhone 15 で空きが 37px → 10px まで減って実機で溢れる恐れがある */
-  #btnrow{display:flex;align-items:stretch;gap:6px;width:100%;}
-  #mute{font:inherit;font-size:15px;line-height:1;padding:4px 9px;border-radius:8px;
-    background:var(--road);border:2px solid var(--wall);color:var(--ink);flex:0 0 auto;}
-  #mute.off{opacity:.5;}
-  #mute:active{background:var(--wall2);}
-  #smk{font:inherit;font-weight:800;font-size:14px;padding:12px 18px;border-radius:8px;
-    background:#5a2130;border:2px solid var(--enemy);color:var(--ink);}
-  #smk:active{background:#7d2c42;}
-
-  #hint{text-align:center;margin-top:8px;font-size:11px;opacity:.55;}
-  .site-footer{text-align:center;margin-top:6px;font-size:10px;opacity:.45;line-height:1.6;}
-
-  /* PC: 十字パッドと煙ボタンは要らない(キーボード操作)。立ち絵はステージの横へ */
-  @media(hover:hover) and (pointer:fine){
-    #smk{display:none;}
-    #btnrow{justify-content:center;}
-    /* 立ち絵をステージの横に置くぶん、枠を広げる。広げないとステージが縮む */
-    #wrap{width:min(96vw,780px);}
-    #play{flex-direction:row;align-items:flex-start;justify-content:center;gap:14px;}
-    #stage{order:1;width:614px;max-width:100%;flex:0 1 auto;}  /* canvas と1:1 */
-    #side{order:2;padding-top:4px;flex:0 0 auto;width:150px;}
-  }
-
-  /* スマホ横持ち: 高さが足りず幅が余る。高さ基準で組む。
-     十字キーを廃してスティックにしたので、左右に確保する幅は 320px → 140px */
-  /* 画面の高さは 100svh だけを信じてはいけない。
-     iOS でホーム画面から起動すると、100svh が実際の表示領域より大きい値を返す
-     （実測: 表示は 343px なのに 100svh は 390px。47px の嘘）。
-     その結果レイアウトが画面からはみ出し、何かの拍子に再計算が走ると直る、
-     という掴みどころのない崩れ方をする。
-     JS が測った innerHeight を --vh に入れ、両者の小さい方を使う。
-     var() の既定値を 100svh にしてあるので、JS が走る前も従来どおり動く */
-  @media (orientation:landscape) and (hover:none){
-    /* iOS のホーム画面アプリでは html,body{height:100%} が実際の表示領域より
-       大きい値を返すことがある。実測(iPhone 縦横 844x390 のアプリ起動):
-         画面390 svh390 cl390 ―― CSS が見ている高さは全部 390 で正しい
-         ところが body の箱は 484 になっていた (= 390 + (外844 - 画面750))
-       body は中央寄せなので、余った 94 の半分 47px だけ中身が下へずれ、
-       上が 5 → 52 になって下が 26 あふれていた。
-       高さの当てにならない箱の中で中央に置くのをやめ、上端に固定する。
-       #play の高さは svh と --vh から取っているので、そちらは信用できる */
-    body{align-items:flex-start;}
-    #wrap{width:100%;}
-    h1,#hint{display:none;}          /* 高さを稼ぐ。タイトルはスタート画面に出る */
-    /* 行の高さを画面いっぱいに取り、十字キーとSMOKEを画面の下端へ寄せる。
-       高さをステージ任せにすると、ステージが縮む端末(iPhone SE等)でつられて
-       上がってしまい、親指が届きにくくなる */
-    /* 左の余白は詰め、余った横幅は右列へ回す */
-    #play{flex-direction:row;align-items:stretch;justify-content:flex-start;gap:10px;
-      height:calc(min(100svh, var(--vh, 100svh)) - 26px);padding-left:10px;}
-    #stage{order:1;align-self:center;flex:0 0 auto;}
-    /* ステージは縮まない側なので、右列は「ステージが使えなかった余り」だけを吸う。
-       横幅が制約になる端末(iPhone SE)では最小幅で止まり、ステージは削られない。
-       上限172pxは縦から決めた: 立ち絵0.75W + レーダー0.76W + ボタン + 隙間 */
-    /* 右列の中身の背は「列の幅」で決まる ― 立ち絵は 4:3 なので 0.75W、
-       レーダーは 33:25 なので 0.758W、ボタン列 54px、隙間 16px。
-       合わせて 1.51W + 70px。172px で固定すると 330px 要ることになり、
-       背の低い画面では #play(100svh - 26px)からあふれて、画面下の注意書きや
-       SMOKE と重なる（実測: 852x349 で 7px、852x309 で 47px あふれていた）。
-       そこで使える高さからも幅の上限を決める。102 = 26(注意書きの行) + 70(中身の
-       固定分) + 6(安全代) */
-    #side{order:2;justify-content:space-between;align-items:stretch;
-      flex:1 1 auto;min-width:92px;
-      max-width:min(172px, calc((min(100svh, var(--vh, 100svh)) - 102px) / 1.51));}
-    /* 画面の隅に固定で置くもの(確認用の⚙など)と重ならないよう、注意書きは
-       左右に場所を空けたうえで中央に置く */
-    .site-footer{padding-inline:86px;}
-    /* 右列の幅いっぱいに広げる。立ち絵は基本が132px固定なので上書きが要る */
-    #pilot{width:100%;}
-    #smk{flex:1 1 auto;min-height:54px;font-size:15px;padding:12px 10px;}
-    /* 高さ基準にしつつ、横幅の残りでも頭打ちにする。
-       140px は 右列の最小(92) + 隙間と余白(48) の見積もり */
-    #stage{width:auto;box-shadow:3px 3px 0 var(--wall2);
-      height:min(calc(min(100svh, var(--vh, 100svh)) - 34px), 420px, calc((100vw - 140px) / 1.6));}
-    .site-footer{margin-top:2px;font-size:9px;}
-  }
-  /* タブレットの横持ち（背が高い）。スマホ用の作りをそのまま伸ばすと、
-     右列が画面の高さいっぱいに引き伸ばされて立ち絵・レーダー・SMOKE が
-     バラバラに散り、さらに右側に大きな余白が残る（実測 1133x744 で 270px）。
-     ここでは「行の高さをステージに合わせ、横は中央に寄せる」に切り替える。
-     601px の境目は、スマホの横持ちが最大でも 430px 程度であることから */
-  @media (orientation:landscape) and (min-height:601px) and (hover:none){
-    /* 高さはステージが決める。右列はそれに合わせて伸びる（align-items:stretch）*/
-    #play{height:auto;justify-content:center;align-items:stretch;padding-left:0;}
-    /* 画面が広いのでステージを大きく取る。220 = 右列200 + 隙間と余白20 */
-    #stage{height:min(calc(min(100svh, var(--vh, 100svh)) - 60px), 760px,
-      calc((100vw - 220px) / 1.6));}
-    #side{max-width:200px;}
-    /* 背が高いぶん上下に余白が出るので、見出しを出して上を埋める */
-    h1{display:block;margin-bottom:10px;}
-  }
-  /* svh 非対応ブラウザ向けの保険 */
-  @supports not (height: 100svh){
-    @media (orientation:landscape) and (hover:none){
-      #stage{height:min(calc(min(100vh, var(--vh, 100vh)) - 34px), 420px, calc((100vw - 140px) / 1.6));}
-      #play{height:calc(min(100vh, var(--vh, 100vh)) - 26px);}
-      #side{max-width:min(172px, calc((min(100vh, var(--vh, 100vh)) - 102px) / 1.51));}
+  <!-- この <head> は sakuya-kit の tools/ogp.html が書き出す共通の形。値を変えるときもツールで作り直す -->
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#06070C" />
+  <!-- ホーム画面に追加したとき、Safari のバーなしの全画面で起動する -->
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="咲耶Nounラリー" />
+  <title>SAKUYA NOUN RALLY ─ COLLECT 11 CNP</title>
+  <meta name="description" content="迷路に散らばった CNP 11体を集めて出口へ戻る、ラリーX系のブラウザゲーム。通った跡が得点になる。" />
+  <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png" />
+  <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+  <link rel="manifest" href="manifest.json" />
+  <!-- OGP / Twitter Card（クローラは JavaScript を実行しないので、ここに静的に書く） -->
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="SAKUYA SERIES" />
+  <meta property="og:title" content="SAKUYA NOUN RALLY ─ COLLECT 11 CNP" />
+  <meta property="og:description" content="迷路に散らばった CNP 11体を集めて出口へ戻る、ラリーX系のブラウザゲーム。通った跡が得点になる。" />
+  <meta property="og:url" content="https://rally.naoblock.jp/" />
+  <meta property="og:image" content="https://rally.naoblock.jp/ogp.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:locale" content="ja_JP" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="SAKUYA NOUN RALLY ─ COLLECT 11 CNP" />
+  <meta name="twitter:description" content="迷路に散らばった CNP 11体を集めて出口へ戻る、ラリーX系のブラウザゲーム。通った跡が得点になる。" />
+  <meta name="twitter:image" content="https://rally.naoblock.jp/ogp.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/naonao1971/sakuya-kit@0.2.0/kit.css" />
+  <style>
+    /* タイトル固有の色だけ上書きする（部品の寸法・配置は kit のまま）。
+       ラリーは紫がかった地で、咲耶スクランブルより少し明るい */
+    :root { --bg: #150f1a; }
+    /* 遊び方。canvas の下、ランキングの前に置く */
+    .rally-how {
+      width: min(92vw, 720px);
+      box-sizing: border-box;
+      color: var(--ink);
+      font-size: 12.5px;
+      line-height: 1.8;
+      opacity: 0.85;
     }
-  }
-
-  /* 縦持ちはタイトルと遊び方。ゲームは横向きでのみ遊べる */
-  /* --- ランキング（F8）--- */
-  /* GAS_URL が空のときは JS が hidden を付けたままにする。未設定のまま
-     公開しても、空の枠だけが出る状態にはならない */
-  /* 横持ちでは #wrap が画面いっぱいなので、そのままだと行が間延びする。
-     読む幅を絞って中央に置く（姉妹作の .leaderboard と同じ考え方） */
-  #rank{width:min(92vw,720px);margin:18px auto 0;padding:14px 12px 18px;
-    border-top:1px solid rgba(232,197,106,.22);}
-  #rank[hidden]{display:none;}
-  .rank-title{font-size:13px;letter-spacing:.14em;text-align:center;
-    color:var(--gold);margin-bottom:10px;font-weight:800;}
-  #ranklist{list-style:none;display:flex;flex-direction:column;gap:4px;}
-  .rank-row{display:grid;grid-template-columns:28px 1fr auto auto;align-items:center;
-    gap:8px;padding:6px 8px;border-radius:6px;background:rgba(242,233,239,.04);
-    font-size:11.5px;}
-  .rank-row.me{background:rgba(232,197,106,.14);}
-  .rank-no{text-align:center;font-weight:800;opacity:.8;}
-  .rank-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-  .rank-x{display:flex;align-items:center;gap:4px;font-size:10px;opacity:.7;}
-  .rank-x img{width:16px;height:16px;border-radius:50%;}
-  .rank-x a{color:inherit;text-decoration:none;}
-  .rank-sc{font-weight:800;color:var(--gold);font-variant-numeric:tabular-nums;}
-  /* 踏破率・回収CNP・クリアは2行目に小さく。1行に詰めると狭い画面で崩れる */
-  .rank-sub{grid-column:2 / -1;font-size:9.5px;opacity:.45;letter-spacing:.04em;}
-  .rank-empty{text-align:center;font-size:11px;opacity:.45;padding:10px;}
-  /* 登録フォーム。TOP10 に入ったときだけ出す */
-  /* align-items:stretch だと入力欄が画面幅いっぱいに伸びて締まらない。
-     中央寄せにして、それぞれ 280px で頭打ちにする（姉妹作と同じ） */
-  #rankform{display:none;flex-direction:column;gap:8px;align-items:center;
-    width:min(360px,100%);margin:0 auto 14px;padding:14px 12px;border-radius:8px;
-    background:rgba(232,197,106,.08);border:1px solid rgba(232,197,106,.3);}
-  #rankform.show{display:flex;}
-  .rank-msg{font-size:12px;text-align:center;color:var(--gold);font-weight:800;}
-  /* font-size は 16px 未満にしないこと。iOS は 16px 未満の入力欄に
-     フォーカスすると画面を勝手に拡大する（B2 でピンチを潰した意味が無くなる） */
-  #rankform input{font:inherit;font-size:16px;width:min(280px,100%);
-    padding:9px 11px;border-radius:6px;
-    border:1px solid rgba(242,233,239,.25);background:rgba(21,15,26,.6);color:var(--ink);}
-  #rankform input::placeholder{color:rgba(242,233,239,.35);}
-  #ranksend{font:inherit;font-size:14px;font-weight:800;width:min(280px,100%);
-    padding:10px;border-radius:6px;
-    border:none;background:var(--pink);color:#1a1020;cursor:pointer;}
-  #ranksend:disabled{opacity:.4;cursor:default;}
-  #rankxidp{display:none;align-items:center;justify-content:center;gap:6px;
-    width:min(280px,100%);font-size:10.5px;line-height:1.5;text-align:center;}
-  #rankxidp.show{display:flex;}
-  #rankxidp.ng{color:#ff9a9a;}
-  #rankxidp.ok{color:#9ae6b4;}
-  #rankxidp img{width:20px;height:20px;border-radius:50%;}
-  #rankstat{font-size:10.5px;opacity:.7;text-align:center;min-height:1em;}
-
-  /* 縦持ちの案内。以前は position:fixed で画面全体を覆っていたが、それだと
-     下にランキングを置いてもスクロールで辿り着けない。流れの中の一区画にして、
-     ゲーム側を隠す形に変えた。最初の一画面ぶんの高さは確保する */
-  #rotate{display:none;
-    flex-direction:column;align-items:center;justify-content:center;gap:10px;
-    text-align:center;padding:24px 18px;
-    /* ぴったり一画面にすると下に続くことが分からない。少しだけ短くして
-       ランキングの見出しが画面の下端から覗くようにする */
-    min-height:calc(min(100svh, var(--vh, 100svh)) - 110px);}
-  body.portrait #rotate{display:flex;}
-  /* 縦持ちではゲーム本体を出さない。見出しは #rotate が自前で持っている */
-  body.portrait h1, body.portrait #play, body.portrait #hint{display:none;}
-  /* #rotate が自前で非公式表記を持っているので、縦持ちでは下のフッターを消す。
-     置いたままだと同じ文が二度出る（固定オーバーレイだった頃は隠れていた）。
-     ランキングより上、最初の一画面で読めるほうがガイドライン的にも良い */
-  body.portrait .site-footer{display:none;}
-  #rotate img{width:min(100%,420px);border-radius:8px;border:2px solid rgba(232,197,106,.45);}
-  #rotate h2{font-size:clamp(17px,5.2vw,24px);letter-spacing:.08em;}
-  #rotate h2 .g{color:var(--pink);}
-  #rotate .en{font-size:11px;letter-spacing:.24em;opacity:.5;margin-top:-4px;}
-  /* 和文は 1ch が欧文の倍近い幅になるので ch 指定だと極端に狭くなる。
-     px で指定して、端末幅いっぱいまで使えるようにする */
-  #rotate .how{font-size:12.5px;line-height:1.8;opacity:.85;max-width:min(100%,380px);}
-  #rotate .turn{margin-top:4px;font-size:15px;font-weight:800;color:var(--gold);}
-  #rotate .icon{font-size:34px;line-height:1;}
-  /* 和文は文字単位で折り返せてしまい「…ファンアートで／す」のように
-     1文字だけ次行へ落ちる。keep-all で欧文の単語境界だけで折らせる */
-  #rotate .note{font-size:10px;opacity:.45;line-height:1.6;word-break:keep-all;}
-</style>
+    .rally-how summary {
+      cursor: pointer;
+      color: var(--gold);
+      font-family: var(--font-display);
+      font-size: 11px;
+      text-align: center;
+      list-style: none;
+    }
+    .rally-how ul { margin: 8px 0 0; padding-left: 1.2em; }
+  </style>
 </head>
 <body>
-<div id="wrap">
-  <h1>咲耶<span class="g">Noun</span>ラリー <span class="g">&#x2310;&#x25E8;-&#x25E8;</span>
-    <span class="en">SakuyaNounRally</span></h1>
-<!-- 縦持ちの画面。タイトルと遊び方を見せ、遊ぶには横向きへ促す -->
-  <div id="rotate" role="alert" aria-live="assertive">
-    <img src="assets/rally_title.jpg" alt="ラリーカーを運転する咲耶とノグルズのナビゲーター">
-    <h2>咲耶<span class="g">Noun</span>ラリー <span class="g">&#x2310;&#x25E8;-&#x25E8;</span></h2>
-    <p class="en">SakuyaNounRally</p>
-    <p class="how">迷路に散らばった CNP 11体を全部回収し、出口へ戻れ。<br>
-      通った跡は得点になる。<br>
-      車は止まらない ― 決められるのは曲がる方向だけ。<br>
-      赤い敵車に触れるとクラッシュ。車は3台まで。<br>
-    茶色の岩は避けろ ― 乗ると即ミス。敵は乗ると大破し、5秒戻らない。<br>
-      SMOKE でスピンさせられるが、燃料を多く食う。燃料が尽きると減速し、やがて力尽きる。<br>
-      塗り進めると青いガソリン缶が落ちる ― まだ塗っていない道にだけ出る。</p>
-    <div class="icon">📱⤴</div>
-    <p class="turn">横向きにしてください</p>
-    <button class="fsbtn" type="button" hidden>&#x1F3AE; 全画面で遊ぶ</button>
-    <p class="note">本作は CryptoNinja / CryptoNinja Partners の非公式ファンアートです</p>
+  <!-- 共通UI（スタート・ポーズ・操作ボタン・スティック・ランキング・縦持ち案内・全画面の案内）は
+       sakuya-kit が足す。ここに置くのはゲーム画面の canvas と遊び方だけ。
+       canvas の右 212px は、咲耶の立ち絵とレーダーを描くサイドパネル -->
+  <div class="sk-wrap">
+    <canvas id="c" width="826" height="384" aria-label="迷路のゲーム画面"></canvas>
   </div>
-  <div id="play">
-    <div id="stage">
-      <canvas id="c" width="614" height="384"></canvas>
-      <button id="pause" type="button" aria-label="一時停止">&#x23F8;</button>
-      <img id="cardpv" alt="シェアされるカード">
-      <video id="clearvid" class="cutvid" playsinline preload="none" aria-hidden="true"></video>
-      <video id="overvid"  class="cutvid" playsinline preload="none" aria-hidden="true"></video>
-      <button id="vidskip" type="button">タップで飛ばす</button>
-      <div id="ov">
-        <h2 id="ovt">咲耶<span class="g">Noun</span>ラリー</h2>
-        <div id="ovsub">SakuyaNounRally</div>
-        <div id="ovbuild"></div>
-        <p id="ovp">CNP11体を集めて、出口へ戻れ。通った跡が得点。<br>車は止まらない ― 曲がる方向だけ決める。<br>壁に当たると自動で右へ。行き止まりだけ跳ね返る。<br>赤い車に触れるとクラッシュ。車は3台。<br>茶色の岩は避けろ ― 乗ると即ミス。敵は乗ると大破し、5秒戻らない。<br>SMOKE で敵はスピン。ただし燃料を多く食う。<br>燃料が尽きると減速し、8秒で力尽きる。<br>塗り進めると青いガソリン缶が落ちる ― 未踏の道にだけ出る。<br>ゴールすると残燃料・残機・踏破率がボーナスになる。<br><br>スマホ: 画面を押したまま倒す<br>PC: 矢印/WASD ・ Space=煙 ・ M=音 ・ P=一時停止</p>
-        <button id="btn">START</button>
-        <button class="fsbtn" type="button" hidden>&#x1F3AE; 全画面で遊ぶ</button>
-        <button id="share" type="button">&#x1D54F; でシェア</button>
-        <p id="sharemsg"></p>
-      </div>
-    </div>
-    <div id="side">
-      <img id="pilot" src="assets/rally_pilot.png" alt="ラリーカーを運転する咲耶と、地図を広げるノグルズのナビゲーター">
-      <canvas id="radar" width="184" height="140" aria-hidden="true"></canvas>
-      <div id="btnrow">
-        <button id="mute" type="button" aria-label="音を消す">&#x1F50A;</button>
-        <button id="smk" type="button">SMOKE</button>
-      </div>
-    </div>
-  </div>
-  <div id="hint">CNP11体は咲耶スクランブルと同じ正式アート＋正式名 ・ 自機は ⌐◨-◨ カー</div>
-  <!-- ガイドラインの「公式を騙らない」に対応する表記。タイトルにIP名を掲げている
-       ので、非公式であることは常時読める場所に置いておく（咲耶スクランブルと同文） -->
-  <section id="rank" aria-label="ランキング TOP10" hidden>
-    <div id="rankform">
-      <p class="rank-msg">TOP10入り！ 名前を登録してください</p>
-      <input id="rankname" type="text" maxlength="20" autocomplete="off"
-             placeholder="ニックネーム（必須）">
-      <input id="rankxid" type="text" maxlength="20" autocomplete="off"
-             placeholder="X の ID（任意・@なし）">
-      <div id="rankxidp"></div>
-      <button id="ranksend" type="button">登録する</button>
-      <p id="rankstat"></p>
-    </div>
-    <h2 class="rank-title">&#x1F3C6; TOP10</h2>
-    <ol id="ranklist"></ol>
-  </section>
-  <footer class="site-footer">
-    本作は CryptoNinja / CryptoNinja Partners の非公式ファンアートです
-  </footer>
-</div>
+  <details class="rally-how" id="how">
+    <summary>遊び方</summary>
+    <ul>
+      <li>迷路に散らばった CNP 11体を全部回収し、出口へ戻れ。通った跡は得点になる。</li>
+      <li>車は止まらない ― 決められるのは曲がる方向だけ。壁に当たると自動で右へ。行き止まりだけ跳ね返る。</li>
+      <li>赤い敵車に触れるとクラッシュ。車は3台まで。</li>
+      <li>茶色の岩は避けろ ― 乗ると即ミス。敵は乗ると大破し、5秒戻らない。</li>
+      <li>SMOKE（💨）で敵をスピンさせられるが、燃料を多く食う。燃料が尽きると減速し、8秒で力尽きる。</li>
+      <li>塗り進めると青いガソリン缶が落ちる ― まだ塗っていない道にだけ出る。</li>
+      <li>ゴールすると残燃料・残機・踏破率がボーナスになる。</li>
+      <li>スマホ: 画面のどこでも押したまま倒す ・ PC: 矢印/WASD、Space=煙、M=音、P=一時停止</li>
+    </ul>
+  </details>
 
-<div id="crash" hidden role="alert"></div>
-<!-- ホーム画面に追加する手順。iPhone は全画面APIが無く、ここが唯一の道。
-     図は実機スクショではなく描いたもの ― スクショは iOS の版が上がるたびに
-     古くなるが、要点だけ描いた図なら古くならない -->
-<div id="fsmodal" role="dialog" aria-modal="true" aria-labelledby="fstitle" hidden>
-  <div id="fsbox">
-    <h3 id="fstitle">&#x1F3AE; 全画面で遊ぶ</h3>
-    <p class="lead">iPhone では、<b>ホーム画面に追加</b>すると<br>
-      Safari のアドレスバーなしで遊べます。</p>
+  <script type="module">
+  // 共通部分は sakuya-kit（https://github.com/naonao1971/sakuya-kit）。版を上げるときは
+  // kit.css と同じ番号にそろえ、CHANGELOG を読んでから実機で確かめる
+  import { createKit } from "https://cdn.jsdelivr.net/gh/naonao1971/sakuya-kit@0.2.0/kit.js";
 
-    <div class="fsstep">
-      <div class="n">1</div>
-      <div class="t">画面の下にある <em>共有</em> ボタンをタップ
-        <svg viewBox="0 0 210 78" role="img" aria-label="画面下のツールバーにある共有ボタン">
-          <rect x="1" y="1" width="208" height="76" rx="9" fill="#120c18"
-                stroke="rgba(242,233,239,.18)"/>
-          <rect x="12" y="14" width="186" height="30" rx="6" fill="#241b2d"/>
-          <text x="105" y="34" text-anchor="middle" font-size="11"
-                font-family="ui-monospace,monospace" fill="rgba(242,233,239,.45)">
-            rally.naoblock.jp</text>
-          <rect x="12" y="52" width="186" height="16" rx="5" fill="#241b2d"/>
-          <circle cx="105" cy="60" r="13" fill="none" stroke="#ff2d9b" stroke-width="2"/>
-          <path d="M105 54 v9 M101 57 l4-4 4 4" stroke="#ff2d9b" stroke-width="1.8"
-                fill="none" stroke-linecap="round" stroke-linejoin="round"/>
-          <rect x="99" y="62" width="12" height="2" fill="#ff2d9b"/>
-        </svg>
-      </div>
-    </div>
+  const cv = document.getElementById('c'), ctx = cv.getContext('2d');
+  // 迷路を描く範囲（左）と、立ち絵・レーダーのサイドパネル（右）
+  const VW = 614, VH = cv.height;
+  const SIDE_X = VW, SIDE_W = cv.width - VW;
 
-    <div class="fsstep">
-      <div class="n">2</div>
-      <div class="t">出てきた一覧から <em>ホーム画面に追加</em> をタップ
-        <svg viewBox="0 0 210 78" role="img" aria-label="共有シートのホーム画面に追加の項目">
-          <rect x="1" y="1" width="208" height="76" rx="9" fill="#120c18"
-                stroke="rgba(242,233,239,.18)"/>
-          <rect x="12" y="10" width="186" height="17" rx="5" fill="#241b2d"/>
-          <rect x="22" y="16" width="72" height="5" rx="2.5" fill="rgba(242,233,239,.22)"/>
-          <rect x="12" y="31" width="186" height="20" rx="5" fill="#2e2338"
-                stroke="#ff2d9b" stroke-width="1.6"/>
-          <rect x="21" y="36" width="10" height="10" rx="2" fill="none"
-                stroke="#ff2d9b" stroke-width="1.5"/>
-          <path d="M26 39 v4 M24 41 h4" stroke="#ff2d9b" stroke-width="1.4"
-                stroke-linecap="round"/>
-          <text x="39" y="45" font-size="9.5" font-family="sans-serif" fill="#f2e9ef">
-            ホーム画面に追加</text>
-          <rect x="12" y="55" width="186" height="17" rx="5" fill="#241b2d"/>
-          <rect x="22" y="61" width="58" height="5" rx="2.5" fill="rgba(242,233,239,.22)"/>
-        </svg>
-      </div>
-    </div>
+  // 咲耶シリーズ共通のランキング（sakuya-kit/gas/apps-script.gs）。?game=rally のシートを読み書きし、
+  // 他のタイトルと合わせた総合ランキングにも載る
+  const GAS_URL = 'https://script.google.com/macros/s/AKfycby-UoKAfHw4eBULVb37tQzwPEhNm65B_HUktd9Sh0ZxMdOdmnRHdub0NeeXUCAqg8bG/exec';
+  const SHARE_URL = 'https://rally.naoblock.jp/';
 
-    <div class="fsstep">
-      <div class="n">3</div>
-      <div class="t"><em>Webアプリとして開く</em> をオンにして <em>追加</em>
-        <svg viewBox="0 0 210 78" role="img" aria-label="Webアプリとして開くをオンにして追加">
-          <rect x="1" y="1" width="208" height="76" rx="9" fill="#120c18"
-                stroke="rgba(242,233,239,.18)"/>
-          <rect x="12" y="10" width="120" height="16" rx="5" fill="#241b2d"/>
-          <rect x="21" y="15" width="46" height="6" rx="3" fill="rgba(242,233,239,.28)"/>
-          <rect x="146" y="9" width="52" height="18" rx="9" fill="#ff2d9b"/>
-          <text x="172" y="22" text-anchor="middle" font-size="10"
-                font-family="sans-serif" font-weight="700" fill="#150f1a">追加</text>
-          <rect x="12" y="38" width="186" height="28" rx="6" fill="#2e2338"
-                stroke="#ff2d9b" stroke-width="1.6"/>
-          <text x="22" y="56" font-size="9.5" font-family="sans-serif" fill="#f2e9ef">
-            Webアプリとして開く</text>
-          <rect x="158" y="45" width="30" height="16" rx="8" fill="#49e0d8"/>
-          <circle cx="180" cy="53" r="6" fill="#ffffff"/>
-        </svg>
-      </div>
-    </div>
+  // クリア時の得点の内訳と、ゲームオーバーの理由（結果画面に描く）
+  let resultNote = null;
 
-    <p class="note" id="fsnote" hidden></p>
-    <p class="foot">追加したら、<b>ホーム画面のアイコンからゲームを起動</b>してください。<br>
-      Safari から開いたままでは全画面になりません。</p>
-    <button class="close" type="button" id="fsclose">閉じる</button>
-  </div>
-</div>
-
-<div id="joyhint" aria-hidden="true"></div>
-<div id="joyhintcap" aria-hidden="true">どこでも押したまま倒す</div>
-<div id="joyring" aria-hidden="true"></div>
-<div id="joyknob" aria-hidden="true"></div>
-
-<script>
-// 本体より先に登録すること。初期化の途中で例外が出ると、以降の
-// addEventListener が1つも走らず「STARTを押しても何も起きない」板になる。
-// 黙って死ぬと原因が分からないので、必ず画面に出す
-// 出すのは「最初のエラー」。2件目以降は1件目で死んだ巻き添えで、
-// 原因から遠ざかる（実際、真因は bgmOn なのに state の方を表示して追いかけた）
-//
-// 出どころも必ず一緒に出すこと。このページは外部のスクリプトを一切読んでいない
-// （画像もアイコンも同一オリジン、script は2つともインライン）ので、
-// ファイル名の無い「Script error.」はこのページの外から来ている ―
-// 拡張機能やコンテンツブロッカーが注入したスクリプトの類。ゲームの不具合ではない。
-// 出どころを書かずに出していたため、無関係のエラーでゲームが壊れて見えていた
-//
-// このページの外から来たエラーは、赤い帯を出さない。
-// ファイル名も行番号も無い「Script error.」は、別オリジンのスクリプトが
-// 投げたもの ― このページは外部スクリプトを1つも読んでいないので、
-// 拡張機能やコンテンツブロッカーが注入したものに限られる。
-// それを赤帯で出すと、遊びに来た人には「ゲームが壊れている」ようにしか
-// 見えない。実際、公開した直後にその報告が来た。
-// 黙って捨てるのではなく console には残し、?diag=1 なら帯にも出す
-// 調べるための表示を出してよいか。判定はここ1か所に置く（帯は2種類 ―
-// エラー帯とレイアウト帯 ― あるので、別々に書くとどちらかが取り残される）。
-//
-// ホーム画面アプリだけ条件が違う。iOS は「ホーム画面に追加」した時点の
-// URL を起動URLとして焼き付けるので、?diag=1 の画面から追加すると、
-// 以後アプリを開くたびに永久に赤い帯が出る。閉じても消えない。
-// だから**アプリで出すには diag=app と書かせる。** うっかり焼き付く
-// diag=1 では出さない。ブラウザでは今までどおり diag=1 で出る
-function isStandaloneApp(){
-  try{
-    return !!(navigator.standalone
-      || (window.matchMedia && matchMedia('(display-mode:standalone)').matches));
-  }catch(e){ return false; }
-}
-function diagOn(){
-  var q=location.search;
-  if(q.indexOf('diag=app') >= 0) return true;
-  return !isStandaloneApp() && q.indexOf('diag=1') >= 0;
-}
-var firstErr=null, errCount=0;
-var ERR_DIAG = diagOn();
-function showErr(msg,line,file){
-  var where = file ? String(file).split('/').pop().split('?')[0] : '';
-  var outside = !where && !line && /Script error/i.test(String(msg));
-  if(outside && !ERR_DIAG){
-    try{ console.warn('[このページ外のスクリプトのエラー。帯には出さない]', msg); }catch(e){}
-    return;
-  }
-  errCount++;
-  if(firstErr===null){
-    firstErr='ERROR: '+(outside?'［このページ外］':'')+msg
-      +(where?' '+where:'')+(line?' @'+line:'');
-  }
-  var d=document.getElementById('crash'); if(!d) return;
-  d.textContent=firstErr+(errCount>1?'　(以後 '+(errCount-1)+'件)':'');
-  d.dataset.owner='error';
-  d.hidden=false;
-}
-addEventListener('error', function(e){
-  showErr((e.error&&e.error.message)||e.message||String(e), e.lineno, e.filename);
-});
-// 画面の高さを実測して --vh に入れる。
-//
-// iOS のホーム画面アプリでは、レイアウトの箱が画面の上端から下へずらして
-// 置かれることがある（実測: 47px。ノッチの逃げ幅と同じ）。ところが
-// innerHeight も 100svh も、そのずれを差し引かずに 390 を返してくる。
-// env(safe-area-inset-*) は viewport-fit=cover を指定していないと 0 なので
-// そちらからも読めない（実測: 逃げ0/0/0/0）。
-//
-// そこで html の位置を実測して、ずれた分を引く。
-//   使える高さ = innerHeight - (html の上端がビューポート座標でどこにあるか)
-// ふつうの環境では上端は 0 なので、引き算は何もしない。
-// 本体より前に置くこと ― 最初の描画からズレていない値で組ませる
-function vhOffset(){
-  try{
-    // ページがスクロールできるようになったので、スクロール中は rect.top が
-    // 負に振れる。ずれの実測は先頭にいるときだけ信じる
-    var y=window.pageYOffset||document.documentElement.scrollTop||0;
-    if(y>0.5) return 0;
-    var r=document.documentElement.getBoundingClientRect();
-    return (r && r.top>0.5) ? r.top : 0;
-  }catch(e){ return 0; }
-}
-function setVH(){
-  try{
-    var h=window.innerHeight-vhOffset();
-    if(h>80) document.documentElement.style.setProperty('--vh', Math.round(h)+'px');
-  }catch(e){}
-}
-setVH();
-addEventListener('resize', setVH);
-addEventListener('orientationchange', function(){ setTimeout(setVH,300); });
-// 起動直後は値が落ち着かないことがあるので、しばらく測り直す
-[100,300,600,1200,2500].forEach(function(ms){ setTimeout(setVH,ms); });
-addEventListener('unhandledrejection', function(e){
-  showErr('unhandled: '+((e.reason&&e.reason.message)||e.reason), 0, '');
-});
-</script>
-<script>
-(() => {
-  const cv=document.getElementById('c'), ctx=cv.getContext('2d');
-  const VW=cv.width, VH=cv.height;
-  const ov=document.getElementById('ov'), ovt=document.getElementById('ovt'), ovp=document.getElementById('ovp'), btn=document.getElementById('btn');
-  const ovsub=document.getElementById('ovsub');
-  const ovbuild=document.getElementById('ovbuild');
-  try{
-    const d=new Date(document.lastModified);
-    ovbuild.textContent = isNaN(d) ? '' :
-      '更新 '+d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2)
-      +' '+('0'+d.getHours()).slice(-2)+':'+('0'+d.getMinutes()).slice(-2);
-  }catch(e){}
-  // 縦持ちではゲームを止め、タイトルと遊び方の画面を出す。
-  // 判定をイベント任せにしないこと。iOS Safari の orientationchange はビューポート
-  // (=メディアクエリ)の更新より先に発火することがあり、その時点の古い値で固定すると
-  // 横向きに戻しても再評価されず、遊べないまま固まる（咲耶スクランブルで実害が出た）
-  const rotateEl=document.getElementById('rotate');
-  const portraitMQ=window.matchMedia('(orientation: portrait)');
-  const isMobileDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
-  let orientationBlocked=false;
-  var booted=false;   // 末尾で true。let だとここを読む時点で TDZ になる
-  function updateOrientation(){
-    const should = isMobileDevice && portraitMQ.matches;
-    if(should===orientationBlocked) return;
-    orientationBlocked=should;
-    rotateEl.classList.toggle('visible', should);
-    document.body.classList.toggle('portrait', should);
-    // 縦持ちの間は進行が止まるので、BGMも止める
-    // booted で守ること。この関数は state / bgmOn より前に定義されているので、
-    // 初期化が終わる前に呼ぶと let の TDZ で落ちる ― しかも落ちた先が
-    // 「STARTを押しても何も起きない」なので原因が見えない。実際に踏んだ
-    if(booted){ if(should) bgmStop(); else if(state==='play') bgmStart(); }
-  }
+  const kit = createKit({
+    gameId: 'rally',
+    title: 'SAKUYA NOUN RALLY',
+    subtitle: '- COLLECT 11 CNP -',
+    canvas: cv,
+    gasUrl: GAS_URL,
+    cnp: true,
+    // 旧版のベストスコアをそのまま引き継ぐ
+    hiScoreKey: 'nounrally_best',
+    // 理論上の最高点は約9400点（塗り2325＋CNP2420＋ゴール800＋残燃料1500＋残機900＋踏破1500）
+    maxScore: 10000,
+    rankingLabels: { progress: '踏破' },
+    // 音はこのゲーム独自の BGM とジングルを使う（kit のジングルは鳴らさない）
+    jingle: false,
+    startAnchor: { x: VW / 2, y: VH - 34 },
+    controls: {
+      stick: true,
+      // 迷路なので4方向に丸める。canvas の上ならどこでも押したまま倒せる
+      stickDigital4: true,
+      stickArea: 'canvas',
+      buttons: [
+        { id: 'smoke', label: '💨', ariaLabel: 'SMOKE（煙幕）', keys: ['Space'], primary: true,
+          onPress: () => { emitting = true; }, onRelease: () => { emitting = false; } },
+      ],
+    },
+    cutscenes: {
+      // どちらも流し終えるか、タップで飛ばすまで結果画面を待たせる
+      clear: { src: 'assets/rally_clear.mp4', skippable: true, blockResults: true },
+      gameOver: { src: 'assets/rally_crash.mp4' },
+    },
+    resultScreen: {
+      mediaWidth: 320,
+      decorate: (g, info) => drawResultNote(g, info),
+    },
+    share: {
+      when: 'always',
+      url: SHARE_URL,
+      fileName: 'sakuya-noun-rally.png',
+      text: () => shareText(),
+      image: () => {
+        const card = buildShareCard();
+        setTimeout(() => card.remove(), 30000);
+        return card;
+      },
+    },
+    help: {
+      mobile: '画面のどこでも押したまま倒すと曲がる。右下の💨で煙幕',
+      pc: '矢印/WASDで曲がる ・ Spaceで煙幕 ・ Mで音 ・ Pで一時停止',
+      playing: '車は止まらない ― 曲がる方向だけ決める',
+    },
+    onStart: () => newGame(),
+    onGameOver: (r) => {
+      // 動画が流せたときは動画の音に任せる。流せないときだけジングルと結果の音
+      if (!kit.cutscene.playing) {
+        if (r.cleared) jingle();
+        beep(150, .28, 'sawtooth', .06);
+      }
+    },
+    onPause: (p) => { if (p) bgmStop(); else bgmStart(); },
+    onMute: (m) => { muted = m; if (master) master.gain.value = m ? 0 : 1; },
+    // ポーズ・タブ切替・通知の割り込みで、押しっぱなしの向きと煙を捨てる
+    onInputReset: () => { heldDir = null; heldCode = null; stickDir = null; emitting = false; },
+    // 方向キーはこのゲームの「最後に押した向き」の扱いで拾う（kit の上下左右は使わない）
+    onKeyDown: (e) => onDirKey(e),
+    update: () => { if (state === 'play') update(1 / 60); },
+    render: () => draw(),
+  });
+  window.kit = kit; // デバッグ用
+  // いま走っている車の色を、スティックのつまみにも付ける
+  const joyKnob = document.querySelector('.sk-joyknob');
+  // 遊び方はランキングより上に出す
+  document.querySelector('.sk-leaderboard').before(document.getElementById('how'));
 
   const TILE=24, COLS=33, ROWS=25;
   const WW=COLS*TILE, WH=ROWS*TILE;
 
-  // CNP 11体。id / 名前 / hue は咲耶スクランブル(naonao1971/SakuyaScramble の
-  // index.html にある cnpChars)と同一の正式データ。絵も同じものを
-  // assets/cnp/<id>.png に置いてある。差し替えるときは両方を揃えること。
-  const CNP = [
-    { id:'cnp_sotai_leelee',   n:'リーリー', hue:196 },
-    { id:'cnp_sotai_mitama',   n:'ミタマ',   hue:150 },
-    { id:'cnp_sotai_narukami', n:'ナルカミ', hue:46  },
-    { id:'cnp_sotai_orochi',   n:'オロチ',   hue:24  },
-    { id:'cnp_sotai_luna',     n:'ルナ',     hue:220 },
-    { id:'cnp_sotai_yama',     n:'ヤマ',     hue:92  },
-    { id:'cnp_sotai_makami',   n:'マカミ',   hue:322 },
-    { id:'cnp_sotai_towa',     n:'トワ',     hue:262 },
-    { id:'cnp_sotai_setsuna',  n:'セツナ',   hue:174 },
-    { id:'cnp_sotai_ema',      n:'エマ',     hue:292 },
-    { id:'cnp_sotai_taruto',   n:'タルト',   hue:352 }
-  ].map(def => {
-    // 画像が無い場合は onerror が飛ぶだけで、ready:false のままプレースホルダに落ちる。
-    // 1枚も無くても回収・当たり判定・レーダーはすべて動く(咲耶スクランブルと同じ方針)
-    const ch = { ...def, c:`hsl(${def.hue},70%,62%)`, img:new Image(), ready:false };
-    ch.img.onload  = () => { ch.ready = ch.img.naturalWidth > 0; };
-    ch.img.onerror = () => { ch.ready = false; };
-    ch.img.src = 'assets/cnp/' + def.id + '.png';
-    return ch;
-  });
+  // CNP 11体。絵・名前・色は sakuya-kit の正典（kit.cnp.chars）をそのまま使う。
+  // このゲームで使う名前(n)と色(c)の呼び名だけ足す
+  const CNP = kit.cnp.chars.map(ch => Object.assign(ch, { n: ch.label, c: `hsl(${ch.hue},70%,62%)` }));
   const NTARGET=CNP.length;
   // 未収集の枠は実際の絵のシルエットで出す。「?」の仮絵にすると11枠が
   // 全部同じ顔になり、あと誰が残っているのか読めなくなる（姉妹作の教訓）
   const SIL_PX = 40;
   function silhouette(ch){
-    if(ch.sil) return ch.sil;
+    if(ch.rsil) return ch.rsil;
     if(!ch.ready) return null;          // 絵が来る前はキャッシュしない
     const c=document.createElement('canvas'); c.width=c.height=SIL_PX;
     const g=c.getContext('2d');
@@ -748,7 +187,7 @@ addEventListener('unhandledrejection', function(e){
     g.globalCompositeOperation='source-in';
     g.fillStyle=`hsl(${ch.hue},38%,26%)`;
     g.fillRect(0,0,SIL_PX,SIL_PX);
-    ch.sil=c; return c;
+    ch.rsil=c; return c;
   }
 
   const CHAR_SIZE=22;   // キャラの描画サイズ(px四方)。TILE=24に収まる寸法
@@ -773,7 +212,7 @@ addEventListener('unhandledrejection', function(e){
            radarBg:'#120c18', wall2:'#3d243d', tire:'rgba(242,233,239,.11)', exit:'#ffd23f',
            tunnel:'#49e0d8', can:'#49e0d8', can2:'#1d7f7a' };
 
-  let grid, player, enemies, targets, smoke, cam, state, score, got, fuel, emitting, t, best;
+  let grid, player, enemies, targets, smoke, cam, state, score, got, fuel, emitting, t;
   let cans, canNext;   // 落ちているガソリン缶と、次に出す缶の番号
   let openTotal=0;     // 通路のマス数。踏破率の分母。迷路ごとに1回だけ数える
   let lives, invul;   // 残機と、復活後の無敵の残り秒数
@@ -785,16 +224,7 @@ addEventListener('unhandledrejection', function(e){
   let exitCell, exitOpen; // 出口。11体そろうまで開かない
   let tunnels=[];     // ワープトンネルの口。左右1組
   let dryT;           // 燃料が尽きてからの経過秒。DRY_TIME で力尽きる
-  // localStorage は「あるのに触ると落ちる」ことがある。別オリジンの iframe で
-  // 動かしたとき（アーティファクト等）、iOS Safari の「サイト越えトラッキングを
-  // 防ぐ」が有効だと、getItem を呼んだ時点で SecurityError が飛ぶ。
-  // 素のまま呼ぶとスクリプトがこの行で死に、以降の addEventListener が
-  // 1つも走らない ＝ STARTを押しても何も起きない、になる（実際に踏んだ）
-  const store = {
-    get(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } },
-    set(k,v){ try{ localStorage.setItem(k,v); }catch(e){} },
-  };
-  best = +(store.get('nounrally_best')||0);
+  // ベストスコアは kit.score.hi（旧版の nounrally_best を引き継いでいる）
 
   function genMaze(){
     const g = Array.from({length:ROWS},()=>Array(COLS).fill(1));
@@ -1056,7 +486,7 @@ addEventListener('unhandledrejection', function(e){
     // 操作中の指先でも分かるようにする
     const car=CARS[carIndex()];
     player.color=car.c;
-    document.documentElement.style.setProperty('--car', car.c);
+    if(joyKnob) joyKnob.style.background=car.c;
     carName=2.0;
     syncCam();
   }
@@ -1098,18 +528,9 @@ addEventListener('unhandledrejection', function(e){
     rosterFlash=new Float32Array(NTARGET);
     exitCell=farthestCell(grid); exitOpen=false;
     placePlayer();
-    resetPause(true);
-    state='play'; ov.classList.add('hidden'); resync=true;
-    rankSent=false; cleared=false; if(rankForm) rankForm.classList.remove('show');
-    endClearVideo(); unlockClearVideo();   // 途中で再開されても演出を残さない
-    shareBtn.classList.remove('show'); shareMsg.textContent='';
-    updateRankVisible();                   // 遊んでいる間はランキングを畳む
-    if(cardPv) cardPv.classList.remove('show');
-    // 走り直すたびに影を出し直す。joyTaught は下のほうで let 宣言している
-    // ので、newGame() を「宣言より前に」呼ぶと TDZ で落ちる。いまは START の
-    // クリックからしか呼ばれないので届いている（起動時には呼ばないこと）
-    joyTaught=false;
-    cancelAnimationFrame(rafId); rafId=requestAnimationFrame(loop);
+    // スタート・ポーズ・演出動画・ランキングの出し入れは kit が受け持つ
+    state='play'; cleared=false; resultNote=null;
+    heldDir=null; heldCode=null; stickDir=null;
     bgmStart();
   }
 
@@ -1202,45 +623,8 @@ addEventListener('unhandledrejection', function(e){
     e.wantFresh = true;
   }
 
-  // ポーズ。画面中央のボタンで止める / 再開する。PC は P と Esc でも。
-  const pauseBtn=document.getElementById('pause');
-  let paused=false;
-  function setPaused(p){
-    if(state!=='play' || paused===p) return;
-    paused=p;
-    pauseBtn.classList.toggle('on',p);
-    pauseBtn.innerHTML = p ? '&#x25B6;' : '&#x23F8;';
-    pauseBtn.setAttribute('aria-label', p?'再開':'一時停止');
-    if(p){
-      // 押したまま止めると、再開した瞬間その向きへ走り出す。入力は必ず捨てる
-      heldDir=null; heldCode=null; emitting=false;
-      joy=null; ring.classList.remove('on'); knob.classList.remove('on');
-      bgmStop();
-    }else{
-      // 止めていた間の時間が dt にまとめて乗らないよう、時計を合わせ直す
-      resync=true; bgmStart();
-    }
-    joyHintUpdate();
-  }
-  function resetPause(show){
-    paused=false;
-    pauseBtn.classList.remove('on');
-    pauseBtn.innerHTML='&#x23F8;';
-    pauseBtn.setAttribute('aria-label','一時停止');
-    pauseBtn.classList.toggle('show',show);
-  }
-  // rafId: 走っている requestAnimationFrame。newGame() を「プレイ中に」
-  // 呼ぶと二本目のループが立ち上がり、update() が毎フレーム2回走る＝2倍速に
-  // なる。いまは RETRY ボタンが隠れている間は押せないので実機では起きないが、
-  // 一行で塞げるので塞いでおく（テストで実際に踏んだ）
-  // last は rAF が渡す now と同じ時計で持つこと。performance.now() を入れると、
-  // rAF の now は「そのフレームが始まった時刻」なので、コールバックの中で
-  // 読んだ performance.now() のほうが先に進んでいて now < last になりうる。
-  // そうなると dt がマイナスになり、自機がわずかに後退して燃料が増える
-  // （実測: 43,230フレーム中5回）。開始・ポーズ解除では時刻を入れずに
-  // resync を立て、次のフレームで now をそのまま last にする
-  let last=0, rafId=0, resync=true;
   function update(dt){
+    readStick();
     t+=dt;
     // dt は loop() で 0.05 秒に制限済みなので k は最大 3。1フレームの移動量は
     // 最大でも 7.9px(2.625*3) で、TILE=24 を飛び越すことはない
@@ -1372,8 +756,8 @@ addEventListener('unhandledrejection', function(e){
   // ===== 音 =====
   // iOS Safari は AudioContext を suspended で作る。ユーザー操作の中で resume()
   // しないと鳴らないので、最初のタップ/クリック/キー入力で必ず解除する
-  let actx, master, muted=false;
-  muted = store.get('nounrally_mute')==='1';
+  // 音のオン/オフは kit（🔊 の長押しと M キー）が持ち、onMute でここへ伝わる
+  let actx, master, muted=kit.sfx.muted;
 
   function audio(){
     if(!actx){
@@ -1501,89 +885,6 @@ addEventListener('unhandledrejection', function(e){
     bgmVoice(88, t0+0.40, 0.46, 'square',   0.085);
     bgmVoice(64, t0+0.40, 0.46, 'triangle', 0.075);   // 下を足して厚みを出す
   }
-
-  /* ===== 幕間の動画（F13 クリア / F16 ゲームオーバー）=====
-     クリアとゲームオーバーで1本ずつ流す。途中のクラッシュでは出さない
-     （残機が減るたびに待たされるのは苦痛。最後の1台を失ったときだけ）。
-
-     preload="none" にしてあり、src を入れるのは START を押したとき。
-     読み込む人を、遊ぶと決めた人だけに絞る。
-     iOS はユーザー操作を経ていない再生を拒むので、その START のタップで
-     一度「無音で再生→即停止」して解錠しておく（音声の unlock と同じ理屈）。
-
-     2本になったので、1本のときのべた書きをやめて作る側にまとめた。
-     咲耶スクランブル側の createCutsceneVideo() と同じ形 ― 片方だけ直して
-     もう片方を取り残す、という事故を防ぐため */
-  const vidSkip = document.getElementById('vidskip');
-
-  function makeCutscene(elId, src){
-    const el=document.getElementById(elId);
-    let failed=false, unlocked=false, playing=false, done=null;
-
-    function stop(){
-      if(!playing) return;
-      playing=false;
-      el.pause(); try{ el.currentTime=0; }catch(e){}
-      el.classList.remove('show'); vidSkip.classList.remove('show');
-      const d=done; done=null;
-      if(d) d();
-    }
-    if(el){
-      el.addEventListener('error', ()=>{ failed=true; stop(); });
-      el.addEventListener('ended', ()=>stop());
-      el.addEventListener('click', ()=>stop());
-    }
-    return {
-      unlock(){
-        if(!el || unlocked) return;
-        unlocked=true;
-        if(!el.src) el.src=src;
-        el.muted=true;
-        const pr=el.play();
-        if(pr && pr.then) pr.then(()=>{ el.pause(); try{el.currentTime=0;}catch(e){} }).catch(()=>{});
-      },
-      // 流せるなら流して true。流せないなら false（呼び側がそのまま結果へ進む）
-      play(cb){
-        // readyState>=3 は「最後まで途切れずに流せる見込み」。
-        // 間に合っていないのに挟むと、止まった絵で待たされるだけになる
-        if(!el || failed || !el.src || el.readyState<3 || !el.videoWidth) return false;
-        done=cb; playing=true;
-        try{ el.currentTime=0; }catch(e){}
-        el.muted=muted;
-        el.classList.add('show'); vidSkip.classList.add('show');
-        const pr=el.play();
-        if(pr && pr.catch) pr.catch(()=>{
-          // 音付きが断られたら無音で映像だけ出す（iOSの省電力モード等）
-          el.muted=true;
-          const q=el.play();
-          if(q && q.catch) q.catch(()=>{ failed=true; stop(); });
-        });
-        return true;
-      },
-      stop,
-      syncMuted(){ if(el && playing) el.muted=muted; },
-    };
-  }
-
-  const clearVid = makeCutscene('clearvid', 'assets/rally_clear.mp4');
-  const overVid  = makeCutscene('overvid',  'assets/rally_crash.mp4');
-  function unlockClearVideo(){ clearVid.unlock(); overVid.unlock(); }
-  function endClearVideo(){ clearVid.stop(); overVid.stop(); }
-
-  // 途中で飛ばせるようにする。長い演出を毎回見せられるのは苦痛
-  if(vidSkip) vidSkip.addEventListener('click',e=>{ e.stopPropagation(); endClearVideo(); });
-
-  const muteBtn=document.getElementById('mute');
-  function applyMute(){
-    if(master) master.gain.value = muted?0:1;
-    muteBtn.textContent = muted?'🔇':'🔊';
-    muteBtn.setAttribute('aria-label', muted?'音を出す':'音を消す');
-    muteBtn.classList.toggle('off', muted);
-    store.set('nounrally_mute', muted?'1':'0');
-  }
-  muteBtn.addEventListener('click',e=>{ e.stopPropagation(); muted=!muted; audio(); applyMute();
-    clearVid.syncMuted(); overVid.syncMuted(); });   // 再生中の切替にも追従させる
-  applyMute();
 
   // ⌐◨-◨ ノグルズ。咲耶スクランブル側の drawNoggles() と同じ作りで、
   // 原点は中心。フレーム色だけ差し替えられるようにしてある
@@ -1768,7 +1069,7 @@ addEventListener('unhandledrejection', function(e){
     ctx.fillText(exitOpen ? 'GO TO EXIT!' : 'SCORE '+score, VW/2,15);
     if(exitOpen){ ctx.font='bold 10px ui-monospace,monospace';
       ctx.fillText('SCORE '+score, VW/2, 15+11); ctx.font='bold 12px ui-monospace,monospace'; }
-    ctx.textAlign='right'; ctx.fillText('BEST '+best, VW-8,15);
+    ctx.textAlign='right'; ctx.fillText('BEST '+Math.max(kit.score.hi, score), VW-8,15);
     // fuel = 制限時間
     ctx.fillStyle='#120c18'; ctx.fillRect(8,VH-14,VW-112,10);
     if(fuel>0){
@@ -1813,25 +1114,12 @@ addEventListener('unhandledrejection', function(e){
       ctx.fillStyle=car.c;   ctx.fillRect(bx-10,by-5,11,3);
     }
 
-    // ポーズの幕。中央には再開ボタン(DOM)が重なるので、文字は上下へ逃がす。
-    // 点滅に t は使えない ― 止めている間 update が走らず t が進まないため
-    if(paused){
-      ctx.fillStyle='rgba(21,15,26,.74)'; ctx.fillRect(0,0,VW,VH);
-      const cy=HUD_H+VIEW_H/2;
-      ctx.textAlign='center';
-      ctx.fillStyle=C.ink; ctx.font='bold 22px ui-monospace,monospace';
-      ctx.fillText('PAUSED', VW/2, cy-46);
-      if(((performance.now()/500)|0)%2===0){
-        ctx.font='11px ui-monospace,monospace'; ctx.fillStyle='rgba(242,233,239,.8)';
-        ctx.fillText('中央のボタンで再開', VW/2, cy+52);
-      }
-      ctx.textAlign='left';
-    }
+    // ポーズの幕は kit がこの上に描く
   }
 
-  // レーダーはコース画面の外(右列)に描く。画面内に重ねていたときは
+  // レーダーはコース画面の外（右のサイドパネル）に描く。画面内に重ねていたときは
   // 自機がレーダーの下に潜り、7回に1回はCNPが見えないまま取りに行っていた。
-  // u は描画倍率（専用canvasは実寸×DPRで持つので1より大きい）
+  // u は描画倍率
   function drawRadar(g, RW, RH, u){
     const sx=RW/COLS, sy=RH/ROWS;
     g.fillStyle=C.radarBg; g.fillRect(0,0,RW,RH);
@@ -1859,18 +1147,6 @@ addEventListener('unhandledrejection', function(e){
       g.fillRect((e.x/TILE)*sx-1*u,(e.y/TILE)*sy-1*u,2*u,2*u); }
     g.fillStyle=C.player;
     g.fillRect((player.x/TILE)*sx-1.5*u,(player.y/TILE)*sy-1.5*u,3*u,3*u);
-  }
-
-  // 専用canvasのCSS幅は端末で変わる。実寸×DPRで持たないとドットが潰れる
-  const rdEl=document.getElementById('radar'), rdCtx=rdEl.getContext('2d');
-  let rdU=1;
-  function renderRadar(){
-    const w=rdEl.clientWidth; if(!w) return;
-    const dpr=Math.min(window.devicePixelRatio||1, 3);
-    const cw=Math.round(w*dpr), ch=Math.round(cw*ROWS/COLS);
-    if(rdEl.width!==cw){ rdEl.width=cw; rdEl.height=ch; }
-    rdU=Math.max(1, cw/184);
-    drawRadar(rdCtx, rdEl.width, rdEl.height, rdU);
   }
 
   // 画面上段のロスター。11枠を常に並べ、取った枠だけ絵を起こす。
@@ -1909,18 +1185,6 @@ addEventListener('unhandledrejection', function(e){
     }
   }
 
-  function loop(now){
-    if(state!=='play') return;
-    if(resync){ last=now; resync=false; }   // 時計合わせ。このフレームは dt=0
-    let dt=(now-last)/1000; last=now;
-    // 上限はコマ落ち対策。下限はタイムスタンプの揺れに対する保険
-    if(dt>.05)dt=.05; else if(dt<0)dt=0;
-    // 縦持ちの間は進行を止める。last は毎回更新しているので、横に戻したときに
-    // 溜まった時間がまとめて進むことはない
-    if(!orientationBlocked && !paused) update(dt);
-    if(state==='play'){ render(); renderRadar(); joyHintUpdate();
-      rafId=requestAnimationFrame(loop); }
-  }
   // クラッシュ。CNP・スコア・迷路は引き継ぎ、自機と敵の配置だけやり直す。
   // 燃料は戻さない ― 戻すと残機が事実上の延命チケットになり、
   // 「時計」が燃料と残機の二重になって緊張感が薄れる
@@ -1940,8 +1204,11 @@ addEventListener('unhandledrejection', function(e){
     return [0,0];
   }
 
+  // このプレイで回収したCNP（1始まりの番号）。ランキングのロスターに出る
+  const rescuedList = () => targets.filter(tg=>tg.got).map(tg=>tg.ch.no);
+
   function win(){
-    state='over'; cleared=true; joyHintUpdate();
+    state='over'; cleared=true;
     // ボーナスはゴールしたときだけ。加点はここ1か所に集める
     const pct=paintPct(), restFuel=Math.round(fuel);
     const fuelB = restFuel*FUEL_BONUS_PTS;
@@ -1950,69 +1217,37 @@ addEventListener('unhandledrejection', function(e){
     score += GOAL_BONUS + fuelB + lifeB + sweepB;
     // 内訳を出す。出さないと「なぜこの点なのか」が分からず、次に何を
     // 変えればいいかも分からない
-    const line=(label,val)=>'<span class="b">'+label+'</span> +'+val;
-    const parts=[line('ゴール',GOAL_BONUS), line('残燃料 '+restFuel,fuelB)];
-    if(lifeB) parts.push(line('残機 '+lives+'台',lifeB));
-    if(sweepB) parts.push(line('踏破 '+sweepNeed+'%以上',sweepB));
-    const show=()=>finish('CLEAR!', 'SCORE '+score+' &nbsp;/&nbsp; 踏破 '+painted+'マス ('+
-      pct+'%)<br><span class="bonus">'+parts.join(' &nbsp;')+'</span>');
+    const parts=['ゴール +'+GOAL_BONUS, '残燃料 '+restFuel+' +'+fuelB];
+    if(lifeB) parts.push('残機 '+lives+'台 +'+lifeB);
+    if(sweepB) parts.push('踏破 '+sweepNeed+'%以上 +'+sweepB);
+    resultNote=['踏破 '+painted+'マス ('+pct+'%)', parts.join('  ')];
     bgmStop();
-    // 動画が流せるならそちらに任せ、ジングルは鳴らさない（音がぶつかる）。
-    // 流せないときは今までどおりジングル＋即結果
-    if(clearVid.play(show)) return;
-    jingle(); show();
+    kit.gameOver({ score, cleared:true, rescued:rescuedList(), cnp:got, progress:pct });
   }
   function lose(r){
-    state='over'; cleared=false; bgmStop(); joyHintUpdate();
-    const show=()=>finish('GAME OVER', r+' &nbsp;/&nbsp; SCORE '+score+' (CNP '+got+'/'+NTARGET+
-      ' &nbsp;踏破 '+painted+'マス)');
-    // クリアと同じ扱い。流せるなら動画に任せ、流せないときは即結果へ
-    if(overVid.play(show)) return;
-    show();
-  }
-  function finish(title,sub){
-    joyHintUpdate();                       // 幕が出たら影は消す
-    if(score>best){ best=score; store.set('nounrally_best',best); }
-    updateRankVisible();                   // 結果画面では出す
-    rankOnFinish();
-    beep(150,.28,'sawtooth',.06);
-    ovt.textContent=title;
-    ovsub.classList.add('hidden');   // タイトルの英語表記はスタート画面だけ
-    ovbuild.classList.add('hidden');
-    ovp.innerHTML=sub+'<br><br>車は止まらない。曲がる方向だけ決める。<br>壁に当たると自動で右へ。行き止まりは跳ね返る。<br>SMOKE は燃料を多く食う ― 使いどころ注意。';
-    btn.textContent='RETRY'; ov.classList.remove('hidden');
-    shareBtn.classList.add('show'); shareMsg.textContent='';
-    resetPause(false);
+    state='over'; cleared=false; bgmStop();
+    resultNote=[r, 'SCORE '+score+'  CNP '+got+'/'+NTARGET+'  踏破 '+painted+'マス'];
+    kit.gameOver({ score, cleared:false, rescued:rescuedList(), cnp:got, progress:paintPct() });
   }
 
-  /* ===== ランキング（F8）=====
-     GAS（Google Apps Script）のウェブアプリに JSON で読み書きする。
-     GAS_URL が空の間は枠ごと出さない ― 未設定のまま公開しても、
-     空のランキングや通信エラーを見せずに済む。
-     デプロイ後にこの1行だけ差し替えれば動く */
-  // 咲耶シリーズ共通のランキング（sakuya-kit/gas/apps-script.gs）。?game=rally でこのタイトルの
-  // シートを読み書きし、他のタイトルと合わせた総合ランキングにも載る。旧スプレッドシート(score2)の
-  // 記録は共通のスプレッドシートへ取り込み済み
-  const GAS_URL = 'https://script.google.com/macros/s/AKfycby-UoKAfHw4eBULVb37tQzwPEhNm65B_HUktd9Sh0ZxMdOdmnRHdub0NeeXUCAqg8bG/exec?game=rally';
-
-  const rankEl   = document.getElementById('rank');
-  const rankList = document.getElementById('ranklist');
-  const rankForm = document.getElementById('rankform');
-  const rankName = document.getElementById('rankname');
-  const rankXid  = document.getElementById('rankxid');
-  const rankXidP = document.getElementById('rankxidp');
-  const rankSend = document.getElementById('ranksend');
-  const rankStat = document.getElementById('rankstat');
+  // 結果画面の下に、内訳（クリア）や理由（ゲームオーバー）を足す
+  function drawResultNote(g, { kind, rect, playing }){
+    if(!resultNote || playing) return;
+    const c=kit.retro.colors;
+    g.save();
+    g.textAlign='center';
+    const cx=cv.width/2;
+    let y;
+    if(kind==='clear') y = rect ? rect.y+rect.h+42+60 : VH/2-30+60;
+    else y = VH/2+60;
+    g.font=kit.retro.fontBody(13); g.fillStyle=c.ink;
+    g.fillText(resultNote[0], cx, y);
+    g.font=kit.retro.fontBody(12); g.fillStyle=c.gold;
+    g.fillText(resultNote[1], cx, y+18);
+    g.restore();
+  }
 
   let cleared=false;            // 直前のプレイで出口まで戻れたか
-  let rankRows=[];              // サーバから取った記録（スコアの降順）
-  let rankSent=false;           // 同じプレイで二重登録しない
-  let xidState='empty';         // empty | loading | ok | ng
-  let xidToken=0;               // 入力が変わったら古い結果を捨てるための連番
-
-  const esc = t => String(t).replace(/[&<>"']/g, c =>
-    ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-  const XID_RE = /^[A-Za-z0-9_]{1,15}$/;
 
   // 踏破率。分母は通路のマス数（岩と壁を除く）で、走っている間は変わらない。
   // 缶の判定で毎フレーム呼ぶので、そのたびに openCells() を組み直さないこと
@@ -2021,145 +1256,8 @@ addEventListener('unhandledrejection', function(e){
     return openTotal ? Math.round(painted/openTotal*100) : 0;
   }
 
-  function renderRank(){
-    if(!rankList) return;
-    if(!rankRows.length){
-      rankList.innerHTML='<li class="rank-empty">まだ記録がありません</li>';
-      return;
-    }
-    rankList.innerHTML = rankRows.slice(0,10).map((r,i)=>{
-      const no=i+1;
-      const medal = no===1?'&#x1F947;' : no===2?'&#x1F948;' : no===3?'&#x1F949;' : no;
-      const xid=String(r.xid||'').replace(/^@/,'').trim();
-      const xPart = XID_RE.test(xid)
-        ? '<img src="https://unavatar.io/x/'+encodeURIComponent(xid)+'" alt="" loading="lazy"'+
-          ' onerror="this.style.visibility=\'hidden\'">'+
-          '<a href="https://x.com/'+encodeURIComponent(xid)+'" target="_blank"'+
-          ' rel="noopener noreferrer">@'+esc(xid)+'</a>'
-        : '';
-      const dev = r.device==='モバイル' ? '\uD83D\uDCF1 ' : r.device==='PC' ? '\uD83D\uDCBB ' : '';
-      // 共通GASは踏破率を progress という名前で返す（旧GASは paint）
-      const sub = '踏破 '+((r.paint!=null ? r.paint : r.progress)|0)+'% ・ CNP '+(r.cnp|0)+'/'+NTARGET+
-                  (r.cleared ? ' ・ クリア' : '');
-      return '<li class="rank-row">'+
-        '<span class="rank-no">'+medal+'</span>'+
-        '<span class="rank-name">'+dev+esc(r.nickname)+'</span>'+
-        '<span class="rank-x">'+xPart+'</span>'+
-        '<span class="rank-sc">'+Math.floor(r.score)+'</span>'+
-        '<span class="rank-sub">'+sub+'</span>'+
-      '</li>';
-    }).join('');
-  }
-
-  function loadRank(){
-    if(!GAS_URL) return;
-    fetch(GAS_URL,{cache:'no-store'})
-      .then(r=>r.json())
-      .then(d=>{ rankRows=(d.records||[]).slice().sort((a,b)=>b.score-a.score); renderRank(); })
-      .catch(()=>renderRank());   // 取れなくても「まだ記録がありません」で済ませる
-  }
-
-  // 10件そろっていなければ誰でも載る。そろっていれば10位より上のときだけ
-  const rankQualifies = sc => rankRows.length<10 || sc>rankRows[9].score;
-
-  function rankOnFinish(){
-    if(!GAS_URL) return;
-    if(rankSent || !rankQualifies(score)){ rankForm.classList.remove('show'); return; }
-    rankForm.classList.add('show');
-    rankName.value=''; rankXid.value=''; rankStat.textContent='';
-    xidState='empty'; setXidP('','');
-    updateSend();
-  }
-
-  function setXidP(mode,html){
-    rankXidP.className = mode ? 'show '+mode : '';
-    rankXidP.innerHTML = html||'';
-  }
-  function updateSend(){
-    // 名前が要る。X ID は空ならよいが、入れたなら確認が取れるまで押せない
-    rankSend.disabled = !rankName.value.trim() || (xidState!=='empty' && xidState!=='ok');
-  }
-
-  // unavatar.io の画像が読めるかどうかで、Xアカウントの実在を確かめる。
-  // API キーが要らず、失敗しても画像が出ないだけで済む
-  function verifyXid(raw){
-    const u=String(raw||'').replace(/^@/,'').trim();
-    const token=++xidToken;
-    if(!u){ xidState='empty'; setXidP('',''); updateSend(); return; }
-    if(!XID_RE.test(u)){
-      xidState='ng';
-      setXidP('ng','半角の英数字とアンダースコアだけ、15文字までです');
-      updateSend(); return;
-    }
-    xidState='loading'; setXidP('','確認中…'); updateSend();
-    const img=new Image();
-    img.onload=()=>{ if(token!==xidToken) return;     // 入力が変わっていたら捨てる
-      xidState='ok';
-      setXidP('ok','<img src="https://unavatar.io/x/'+encodeURIComponent(u)+'" alt="">'+
-        '<span>@'+esc(u)+' を確認しました</span>');
-      updateSend(); };
-    img.onerror=()=>{ if(token!==xidToken) return;
-      xidState='ng'; setXidP('ng','このIDのXアカウントが見つかりません');
-      updateSend(); };
-    img.src='https://unavatar.io/x/'+encodeURIComponent(u);
-  }
-
-  if(rankXid){
-    // 打っている間は押せないままにする。空に戻したときだけ即座に戻す
-    rankXid.addEventListener('input',()=>{
-      if(!rankXid.value.trim()){ xidState='empty'; setXidP('',''); }
-      else { xidState='loading'; setXidP('',''); }
-      updateSend();
-    });
-    rankXid.addEventListener('blur',()=>verifyXid(rankXid.value));
-  }
-  if(rankName) rankName.addEventListener('input',updateSend);
-
-  if(rankSend) rankSend.addEventListener('click',()=>{
-    const nickname=rankName.value.trim();
-    if(!nickname){ rankStat.textContent='ニックネームを入れてください'; rankName.focus(); return; }
-    if(xidState!=='empty' && xidState!=='ok'){
-      rankStat.textContent='X の ID を確認できるまで登録できません'; rankXid.focus(); return;
-    }
-    rankSend.disabled=true; rankStat.textContent='登録中…';
-    const record={ nickname, xid:rankXid.value.trim().replace(/^@/,''),
-      score:Math.floor(score), created:Date.now(),
-      device:isMobileDevice?'モバイル':'PC',
-      paint:paintPct(), cnp:got, cleared };
-    // no-cors ではなく text/plain で投げる。GAS は preflight を返さないので、
-    // Content-Type を単純なものにしておかないと CORS で弾かれる
-    fetch(GAS_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},
-        body:JSON.stringify({action:'add',record})})
-      .then(r=>r.json())
-      .then(d=>{
-        if(!d.success) throw new Error(d.error||'failed');
-        rankSent=true;
-        rankStat.textContent='登録しました';
-        rankForm.classList.remove('show');
-        loadRank();
-      })
-      .catch(()=>{ rankStat.textContent='登録できませんでした。通信を確かめてください';
-        rankSend.disabled=false; });
-  });
-
-  // 遊んでいる間は枠ごと畳む。出したままだとページが縦に伸び、指で少し
-  // なぞっただけでスクロールしてゲーム画面が切れる（姉妹作も同じ方針）。
-  // タイトル画面と結果画面でだけ出す
-  function updateRankVisible(){
-    if(!GAS_URL || !rankEl) return;
-    rankEl.hidden = (state==='play');
-  }
-
-  if(GAS_URL){ rankEl.hidden=false; renderRank(); loadRank(); }
-
   /* ===== X へのシェア（F9）=====
-     1200x675 のカードを canvas で描き、OS の共有シートに画像ごと渡す。
-     共有シートに対応していない環境では、画像を保存してから X の投稿画面を開く
-     ― X は URL 経由での画像の自動添付に対応していない（X側の仕様）ので、
-     こればかりは手で添付してもらうしかない */
-  const shareBtn=document.getElementById('share');
-  const shareMsg=document.getElementById('sharemsg');
-  const SHARE_URL='https://rally.naoblock.jp/';
+     1200x675 のカードを canvas で描いて渡す。共有シート・保存・投稿画面を開く流れは kit が持つ */
   const cardImg=new Image();          // カードの背景に使う一枚絵
   cardImg.src='assets/rally_title.jpg';
 
@@ -2257,450 +1355,121 @@ addEventListener('unhandledrejection', function(e){
     return card;   // 後始末は cardFileSync が行う（書き出しが終わるまで外さない）
   }
 
-  function openXIntent(text){
-    window.open('https://twitter.com/intent/tweet?text='+encodeURIComponent(text),
-      '_blank','noopener,noreferrer');
-  }
-
-  // canvas.toBlob は非同期。await を挟むと、iOS Safari では「ユーザー操作の
-  // 続き」とみなされる時間を使い切って navigator.share() が NotAllowedError で
-  // 断られることがある。toDataURL は同期なので、そこから同期で Blob を作る
-  function cardFileSync(){
-    const card=buildShareCard();
-    let url;
-    try{ url=card.toDataURL('image/png'); }
-    finally{ card.remove(); }
-    if(!url || url.length<2000) throw new Error('empty card');   // 空なら先へ進めない
-    const bin=atob(url.split(',')[1]);
-    const buf=new Uint8Array(bin.length);
-    for(let i=0;i<bin.length;i++) buf[i]=bin.charCodeAt(i);
-    const blob=new Blob([buf],{type:'image/png'});
-    return { blob, url, file:new File([blob],'sakuya-noun-rally.png',{type:'image/png'}) };
-  }
-
-  // どの経路を使えるかは環境で決まる。押す前に分かるので、ボタンの文言も変える
-  function shareWay(){
-    try{
-      if(navigator.canShare && navigator.canShare({
-        files:[new File([new Blob([1],{type:'image/png'})],'x.png',{type:'image/png'})]
-      })) return 'sheet';
-    }catch(e){}
-    if(navigator.clipboard && window.ClipboardItem && window.isSecureContext) return 'copy';
-    return 'save';
-  }
-
-  function applyShareLabel(){
-    if(!shareBtn) return;
-    const w=shareWay();
-    shareBtn.textContent = w==='sheet' ? '\uD835\uDD4F でシェア'
-      : w==='copy' ? '画像をコピーして \uD835\uDD4F を開く'
-      : '画像を保存して \uD835\uDD4F を開く';
-  }
-  applyShareLabel();
-
-  // ?diag=1 のときだけ、押した結果どの経路を通ったかを出す。
-  // iPhone で共有シートに入らない、という報告を推測で追いかけないため
-  const cardPv=document.getElementById('cardpv');
-  if(cardPv) cardPv.addEventListener('click',()=>cardPv.classList.remove('show'));
-  function showCardPreview(url){
-    if(location.search.indexOf('diag=1')<0 || !cardPv) return;
-    cardPv.src=url; cardPv.classList.add('show');
-  }
-
-  function shareDiag(extra){
-    // DIAG は後方で const 宣言されている。ここで参照すると、呼ばれる順によっては
-    // TDZ を踏む（README「すべての宣言が終わったあとで呼ぶこと」）。
-    // 判定は軽いので、その場で見る
-    if(location.search.indexOf('diag=1')<0) return;
-    let csF='-';
-    try{
-      csF = (navigator.canShare && navigator.canShare({
-        files:[new File([new Blob([1],{type:'image/png'})],'x.png',{type:'image/png'})]
-      })) ? 'true' : 'false';
-    }catch(err){ csF='throw:'+(err&&err.name); }
-    shareMsg.textContent =
-      'share'+(typeof navigator.share) + ' cs'+(typeof navigator.canShare)
-      + ' csF'+csF + ' clip'+(!!(navigator.clipboard&&window.ClipboardItem))
-      + ' sec'+(!!window.isSecureContext)
-      + ' app'+(navigator.standalone?1:(matchMedia('(display-mode:standalone)').matches?1:0))
-      + ' / ' + extra;
-  }
-
-  if(shareBtn) shareBtn.addEventListener('click', async e=>{
-    e.stopPropagation();
-    shareBtn.disabled=true; shareMsg.textContent='';
-    const text=shareText();
-    let made=null;
-    try{ made=cardFileSync(); showCardPreview(made.url); }
-    catch(err){ shareMsg.textContent='画像を作れませんでした。文だけ投稿します';
-      openXIntent(text); shareBtn.disabled=false; return; }
-    const {blob,file}=made;
-    const kb=Math.round(blob.size/1024);
-
-    // 1) 共有シート。画像と文をそのまま渡せる（スマホはこれ）
-    let can=false, canErr='';
-    try{ can = !!(navigator.canShare && navigator.canShare({files:[file]})); }
-    catch(err){ canErr=(err&&err.name)||'err'; }
-    if(can){
-      try{
-        await navigator.share({ text, files:[file] });
-        shareDiag('sheet ok '+kb+'KB'); shareBtn.disabled=false; return;
-      }catch(err){
-        // 閉じただけなら何もしない。それ以外は下の経路へ落ちる
-        if(err && err.name==='AbortError'){ shareDiag('sheet abort'); shareBtn.disabled=false; return; }
-        canErr=(err&&err.name)||'err';
-      }
-    }
-
-    // 2) クリップボードへ画像をコピーして投稿画面を開く。PC はこれがいちばん
-    //    近道 ― 保存して開き直すより、貼り付けるだけで済む。
-    //    X の投稿画面は URL 経由での画像添付に対応していない（X側の仕様）ので、
-    //    どのみち画像は手で渡すしかない
-    if(navigator.clipboard && window.ClipboardItem){
-      try{
-        await navigator.clipboard.write([new ClipboardItem({'image/png':blob})]);
-        openXIntent(text);
-        shareMsg.textContent='画像をコピーしました。投稿画面で貼り付けてください';
-        shareDiag('copy '+kb+'KB '+canErr); shareBtn.disabled=false; return;
-      }catch(err){ canErr=canErr||('clip:'+((err&&err.name)||'err')); }
-    }
-
-    // 3) 最後の手段。保存してもらって手で添付
-    try{
-      const url=URL.createObjectURL(blob);
-      const a=document.createElement('a');
-      a.href=url; a.download='sakuya-noun-rally.png';
-      document.body.appendChild(a); a.click(); a.remove();
-      setTimeout(()=>URL.revokeObjectURL(url),30000);
-      shareMsg.textContent='画像を保存しました。投稿画面に添付してください';
-    }catch(err){ shareMsg.textContent='文だけ投稿します'; }
-    openXIntent(text);
-    shareDiag('save '+kb+'KB '+canErr);
-    shareBtn.disabled=false;
-  });
-
+  // ===== 操作 =====
+  // 方向キー。押しっぱなしの「状態」として heldDir に入れ、update() が毎フレーム予約を補充する。
+  // 文字の入力欄では kit が先に弾くので、ここへは来ない
   const KEYDIR={ArrowUp:{x:0,y:-1},KeyW:{x:0,y:-1},ArrowDown:{x:0,y:1},KeyS:{x:0,y:1},
                 ArrowLeft:{x:-1,y:0},KeyA:{x:-1,y:0},ArrowRight:{x:1,y:0},KeyD:{x:1,y:0}};
-  // 文字を打っている間は、ゲームの操作を1つも拾わないこと。
-  //
-  // これが無いと、ニックネーム欄で **a d p s w と空白が打てない**。
-  // WASD と矢印は preventDefault で消され、Space は煙、P はポーズ、
-  // M はミュートに取られる（実測: 「wasd master」が「mter」になった）。
-  // 矢印キーでカーソルも動かせない。
-  // 物理キーボードでだけ起きるので、スマホで試している限り気づけない
   const typingInField = e => {
-    const t=e.target;
-    if(!t || t===document.body) return false;
-    if(t.isContentEditable) return true;
-    const tag=(t.tagName||'').toLowerCase();
+    const tg=e.target;
+    if(!tg || tg===document.body) return false;
+    if(tg.isContentEditable) return true;
+    const tag=(tg.tagName||'').toLowerCase();
     return tag==='input' || tag==='textarea' || tag==='select';
   };
-  addEventListener('keydown',e=>{
+  function onDirKey(e){
     if(typingInField(e)) return;
-    if(e.code==='KeyM'){ muted=!muted; audio(); applyMute(); return; }
-    if(e.code==='KeyP'||e.code==='Escape'){ e.preventDefault(); setPaused(!paused); return; }
-    if(e.code==='Space'){ e.preventDefault(); emitting=true; return; }
     const d=KEYDIR[e.code];
-    if(d){ e.preventDefault();
-      if(state==='play'){
-        heldDir={...d}; heldCode=e.code;
-        player.want={...d}; player.wantTimer=WANT_GRACE;
-        // オートリピート(押しっぱなし)は「押したばかり」に数えない。ここを立て
-        // 続けると、自動で2回曲がって向きが真逆になったとき、来た道はかならず
-        // 開いているのでUターンの条件が通り、勝手に引き返してしまう
-        if(!e.repeat) player.wantFresh=true;
-      }
+    if(!d) return;
+    e.preventDefault();
+    if(state==='play' && !kit.paused){
+      heldDir={...d}; heldCode=e.code;
+      player.want={...d}; player.wantTimer=WANT_GRACE;
+      // オートリピート(押しっぱなし)は「押したばかり」に数えない。ここを立て
+      // 続けると、自動で2回曲がって向きが真逆になったとき、来た道はかならず
+      // 開いているのでUターンの条件が通り、勝手に引き返してしまう
+      if(!e.repeat) player.wantFresh=true;
     }
-  });
-  // キーを押したままタブやウィンドウを切り替えると keyup が飛んでこない。
-  // 放置すると「押しっぱなし」のまま固まり、戻ってきたときに勝手に曲がり続ける
-  addEventListener('blur',()=>{ heldCode=null; heldDir=null; emitting=false; });
+    return false;   // kit の上下左右としては使わない
+  }
   addEventListener('keyup',e=>{
     if(typingInField(e)) return;
-    if(e.code==='Space') emitting=false;
     // 離したのが「いま保持している向き」のときだけ解除する。別の向きを
     // 押し足した後で古い方を離しても、新しい向きは保持したままにする
     if(e.code===heldCode){ heldCode=null; heldDir=null; }
   });
-  document.getElementById('crash').addEventListener('click',e=>{ e.currentTarget.hidden=true; });
-  const smk=document.getElementById('smk');
-  smk.addEventListener('pointerdown',e=>{e.preventDefault();emitting=true;});
-  smk.addEventListener('pointerup',()=>emitting=false);
-  smk.addEventListener('pointerleave',()=>emitting=false);
-  // バーチャルスティック。触れた場所に出る浮動式で、出力は heldDir に入れる。
-  // つまり十字キーを押しっぱなしにしているのと同じ「状態」の入力になり、
-  // update() が毎フレーム予約を補充する。スワイプのような一回きりのイベントだと
-  // 予約の寿命を別に用意する必要があり、分岐が 0.19〜0.38秒ごとに来る
-  // （実測）この迷路では取りこぼしが出た
-  const JOY_DEAD = 12;     // 中心からこれ未満は無入力（いまの向きを保つ）
-  const JOY_R    = 24;     // 原点が指を追う半径
-  const JOY_HYST = 1.20;   // 別の軸へ乗り換えるのに要る優勢比
-  const ring=document.getElementById('joyring'), knob=document.getElementById('joyknob');
-  let joy=null;
 
-  // 指の置き場所を教える影。押していない間だけ出し、一度でも曲がったら
-  // その走りではもう出さない ― 分かった人の視界から消すため。
-  // 出す場所はコースの左下。ただし文字では「どこでも押したまま倒す」と言う。
-  // 影だけ置くと「左下を押すもの」と誤解され、この操作のいちばん良いところ
-  // （どこを押しても指の下にスティックが出る）が伝わらない
-  const joyHint=document.getElementById('joyhint');
-  const joyHintCap=document.getElementById('joyhintcap');
-  let joyTaught=false;
-  function joyHintUpdate(){
-    const show = isMobileDevice && !joyTaught && state==='play' && !paused && !joy;
-    if(show){
-      const r=cv.getBoundingClientRect();
-      // 燃料バーは canvas 座標で下から16px。そこへ重ねない
-      const x=r.left+58, y=r.bottom-72;
-      joyHint.style.left=x+'px'; joyHint.style.top=y+'px';
-      // 文字は中央揃えなので、そのまま x に置くとコースの左端からはみ出す。
-      // 半分の幅ぶんだけ内側へ寄せる（実測: 124px あり、9px はみ出していた）
-      const cw=joyHintCap.offsetWidth||120;
-      const cx=Math.min(Math.max(x, r.left+cw/2+6), r.right-cw/2-6);
-      joyHintCap.style.left=cx+'px'; joyHintCap.style.top=(y-52)+'px';
-    }
-    document.body.classList.toggle('joyhint', show);
-  }
-
-  // 4方向へ量子化する。素朴に |dx|>|dy| で決めると 45度付近で毎フレーム
-  // 左右にばたつくので、乗り換えには JOY_HYST 倍の優勢を要求する
-  function joyPick(dx,dy,cur){
-    const ax=Math.abs(dx), ay=Math.abs(dy);
-    if(Math.max(ax,ay) < JOY_DEAD) return cur;
-    if(!cur) return ax>ay ? {x:Math.sign(dx),y:0} : {x:0,y:Math.sign(dy)};
-    const horiz = cur.x!==0;
-    const flip  = horiz ? (ay > ax*JOY_HYST) : (ax > ay*JOY_HYST);
-    const useH  = horiz ? !flip : flip;
-    return useH ? {x:Math.sign(dx),y:0} : {x:0,y:Math.sign(dy)};
-  }
-  function joyShow(ox,oy,kx,ky){
-    ring.style.left=ox+'px'; ring.style.top=oy+'px';
-    knob.style.left=kx+'px'; knob.style.top=ky+'px';
-    ring.classList.add('on'); knob.classList.add('on');
-  }
-  // ポーズボタンの円の中か。ボタンはプレイ中 pointer-events:none なので、
-  // 指はここまで届く。中央でも普通にスティックが出せる
-  function overPause(e){
-    const r=pauseBtn.getBoundingClientRect();
-    if(!r.width) return false;
-    return Math.hypot(e.clientX-(r.x+r.width/2), e.clientY-(r.y+r.height/2)) <= r.width/2+6;
-  }
-  cv.addEventListener('pointerdown',e=>{
-    if(state!=='play' || paused) return;   // 止めている間はスティックを出さない
-    e.preventDefault();
-    joy={id:e.pointerId, ox:e.clientX, oy:e.clientY, dir:null,
-         sx:e.clientX, sy:e.clientY, t0:performance.now(), onPause:overPause(e)};
-    joyShow(joy.ox,joy.oy,joy.ox,joy.oy);
-    joyHintUpdate();
-  });
-  addEventListener('pointermove',e=>{
-    if(!joy || e.pointerId!==joy.id) return;
-    let dx=e.clientX-joy.ox, dy=e.clientY-joy.oy;
-    // 原点を指から半径 JOY_R 以内へ引きずる。固定にすると倒した方向のズレが
-    // 残り続け、直角へ変えるのに指を90px動かす必要があった（実測。追従だと30px）
-    const len=Math.hypot(dx,dy);
-    if(len > JOY_R){
-      joy.ox = e.clientX - dx/len*JOY_R;
-      joy.oy = e.clientY - dy/len*JOY_R;
-      dx = dx/len*JOY_R; dy = dy/len*JOY_R;
-    }
-    joyShow(joy.ox,joy.oy, joy.ox+dx, joy.oy+dy);
-    const d=joyPick(dx,dy,joy.dir);
-    if(!d) return;
-    const changed = !joy.dir || d.x!==joy.dir.x || d.y!==joy.dir.y;
-    joy.dir=d;
-    if(!joyTaught){ joyTaught=true; joyHintUpdate(); }
-    heldDir={...d}; heldCode='joy';
-    // wantFresh は「向きを変えた瞬間」だけ立てる。毎フレーム立てると後退の門が
-    // 開きっぱなしになり、以前直した勝手なUターンが戻ってくる
-    if(changed){ player.want={...d}; player.wantTimer=WANT_GRACE; player.wantFresh=true; }
-  });
-  const joyEnd=e=>{
-    if(joy && e.pointerId!==joy.id) return;
-    // 中央のボタンの上で、倒しもせず、短く離した＝タップ。これだけをポーズにする
-    const tap = !!joy && joy.onPause && !joy.dir
-      && Math.hypot(e.clientX-joy.sx, e.clientY-joy.sy) < JOY_DEAD
-      && performance.now()-joy.t0 < 500;
-    joy=null; ring.classList.remove('on'); knob.classList.remove('on');
-    if(heldCode==='joy'){ heldCode=null; heldDir=null; }
-    joyHintUpdate();
-    if(tap) setPaused(true);
-  };
-  addEventListener('pointerup',joyEnd);
-  addEventListener('pointercancel',joyEnd);
-  btn.addEventListener('click',e=>{ e.stopPropagation(); newGame(); });
-
-  // ポーズ。止めている間も描画は続ける(PAUSEDの幕を出すため)。update だけ止める
-  pauseBtn.addEventListener('click',e=>{ e.stopPropagation(); setPaused(false); });
-
-  // iOS のピンチズームは touch-action:none では止まらない。WebKit独自の
-  // gesture* イベント経由で起きるので、明示的に打ち消す必要がある。
-  // (viewport の user-scalable=no も iOS 10 以降は無視される)
-  //
-  // 打ち消すのは「走っている間」だけ。スタート画面とリザルトには文字が多いので、
-  // 拡大して読みたい人のためにズームできるままにしておく(姉妹作と同じ方針)。
-  // 止めている間(paused)も走行中と同じ扱いにする ― ここでズームを許すと、
-  // 拡大したまま再開されて元の木阿弥になる
-  const zoomLock = () => state==='play';
-  for(const type of ['gesturestart','gesturechange','gestureend']){
-    document.addEventListener(type, e=>{ if(zoomLock()) e.preventDefault(); });
-  }
-  // gesture* を持たないブラウザ(Android Chrome 等)向けの保険。2本指の動きその
-  // ものを打ち消す。passive:false を明示しないと preventDefault が無視される
-  document.addEventListener('touchmove', e=>{
-    if(zoomLock() && e.touches.length>1) e.preventDefault();
-  }, {passive:false});
-
-  // レイアウトが画面からはみ出したときだけ、その数字を帯に出す。
-  // アプリ化(スタンドアロン)でだけ崩れる件(B4)を、実機から読み取るための自己申告。
-  // 収まっているときは何も出さないので普段は無害。
-  //
-  // 数字を見るまで原因を勘で決めないこと。safe-area だと思って余白を足しても、
-  // viewport-fit=cover を指定していない今は env(safe-area-inset-*) が全部 0 なので
-  // 何も変わらない ― 引くものが無い
-  /* ===== 全画面（F19）=====
-     iPhone には全画面APIが無い。あるのは「ホーム画面に追加」だけなので、
-     そこへ案内する。Android・PC・iPad では本物の全画面APIが効くので、
-     案内を出さずにその場で全画面にする。
-
-     **効かないボタンを出さないこと。** 押しても何も起きないボタンほど
-     信用を失うものはない。すでにホーム画面アプリで動いているなら、
-     用が済んでいるのでボタン自体を出さない */
-  const fsEl = document.documentElement;
-  const fsReq = fsEl.requestFullscreen || fsEl.webkitRequestFullscreen || null;
-  const IS_IOS = /iP(hone|od|ad)/.test(navigator.userAgent)
-    || (navigator.platform==='MacIntel' && navigator.maxTouchPoints>1);
-  // iOS の Chrome / Firefox / Edge は中身が WebKit で、UA だけが違う
-  const IOS_OTHER = IS_IOS && /CriOS|FxiOS|EdgiOS|OPiOS/.test(navigator.userAgent);
-  const fsModal = document.getElementById('fsmodal');
-  const fsNote  = document.getElementById('fsnote');
-
-  function fsOpen(){
-    if(IOS_OTHER){
-      fsNote.textContent='このブラウザでは追加できないことがあります。'
-        +'うまくいかないときは Safari で開いてください。';
-      fsNote.hidden=false;
-    }
-    fsModal.hidden=false; fsModal.classList.add('show');
-    fsModal.scrollTop=0;
-  }
-  function fsClose(){ fsModal.classList.remove('show'); fsModal.hidden=true; }
-
-  function fsSetup(){
-    // すでに全画面で動いているなら、ボタンの用は無い
-    if(isStandaloneApp()){ return; }
-    for(const b of document.querySelectorAll('.fsbtn')){
-      b.hidden=false;
-      b.addEventListener('click', e=>{
-        e.stopPropagation();
-        if(fsReq && !IS_IOS){
-          // 本物の全画面。断られたら案内に切り替える（黙って何も起きないのが最悪）
-          try{
-            const r=fsReq.call(fsEl);
-            if(r && r.catch) r.catch(()=>fsOpen());
-          }catch(err){ fsOpen(); }
-          return;
-        }
-        fsOpen();
-      });
+  // バーチャルスティック（kit が4方向に丸めた値を kit.input.stickX/Y に入れる）。
+  // 向きを変えた瞬間だけ wantFresh を立てる。毎フレーム立てると後退の門が
+  // 開きっぱなしになり、以前直した勝手なUターンが戻ってくる
+  let stickDir=null;
+  function readStick(){
+    const sx=kit.input.stickX, sy=kit.input.stickY;
+    if(sx||sy){
+      const d={x:Math.sign(sx), y:Math.sign(sy)};
+      const changed=!stickDir || d.x!==stickDir.x || d.y!==stickDir.y;
+      stickDir=d; heldDir={...d}; heldCode='joy';
+      if(changed){ player.want={...d}; player.wantTimer=WANT_GRACE; player.wantFresh=true; }
+    } else if(stickDir){
+      stickDir=null;
+      if(heldCode==='joy'){ heldCode=null; heldDir=null; }
     }
   }
-  fsSetup();
-  document.getElementById('fsclose').addEventListener('click',e=>{ e.stopPropagation(); fsClose(); });
-  fsModal.addEventListener('click',e=>{ if(e.target===fsModal) fsClose(); });
-  addEventListener('keydown',e=>{ if(e.key==='Escape' && fsModal.classList.contains('show')){
-    e.stopPropagation(); fsClose(); } }, true);
 
-  // ---- はみ出しの自己申告（B4の計測）----
-  // 「起動直後だけ崩れていて、何か触ると直ることがある」という証言があるので、
-  // 1回きりではなく何度も測り、そのつど最新の値に書き換える。
-  // 直った瞬間の値も見えるようにしておくこと（崩れている値だけでは、
-  // どちらが正しい画面サイズなのか分からない）
-  //
-  // 出すのは URL に ?diag=1 が付いているときだけ。保存はしない。
-  //
-  // 以前は localStorage に残し、アプリ起動で崩れていたら自動でも出していた。
-  // 意図は「余計な手間なく数字を取る」だったが、実際には逆になった ―
-  //   ・一度 ?diag=1 で開くと消すのに ?diag=0 がもう一度要る
-  //   ・アプリとSafariで保存領域が別なので、片方を消しても残る
-  //   ・プライベートウィンドウでは保存できず、挙動が読めない
-  // 調べるための道具が、調べる邪魔をしていた。URLを閉じれば必ず消える形にする
-  //
-  // 「URLを閉じれば消える」が成り立たない場所が1つだけある ― ホーム画面アプリ。
-  // 判定は diagOn()（最初の <script>）に置いた。理由もそちらに書いてある
-  const DIAG = diagOn();
-  // 焼き付いた ?diag=1 をアドレスからも消しておく。起動URLそのものは
-  // 変えられないが、ここから先の共有やリロードには持ち越さない
-  if(isStandaloneApp() && location.search.indexOf('diag=1') >= 0){
-    try{ history.replaceState(null, '', location.pathname); }catch(e){}
-  }
-  const svhProbe=document.createElement('div');
-  svhProbe.style.cssText='position:fixed;top:0;left:0;width:0;height:100svh;'+
-    'visibility:hidden;pointer-events:none;';
-  document.body.appendChild(svhProbe);
-  // セーフエリア(ノッチ/ホームインジケータ)の逃げ幅を JS から読むためのプローブ。
-  // viewport-fit=cover を指定していない今は 0 が返るはずで、0 でなければ
-  // ビューポート自体がずらされていることの裏付けになる
-  const saProbe=document.createElement('div');
-  saProbe.style.cssText='position:fixed;top:0;left:0;width:0;height:0;'+
-    'visibility:hidden;pointer-events:none;'+
-    'padding:env(safe-area-inset-top,0px) env(safe-area-inset-right,0px)'+
-    ' env(safe-area-inset-bottom,0px) env(safe-area-inset-left,0px);';
-  document.body.appendChild(saProbe);
-  const saRead=()=>{ const c=getComputedStyle(saProbe);
-    return [c.paddingTop,c.paddingRight,c.paddingBottom,c.paddingLeft]
-      .map(v=>Math.round(parseFloat(v)||0)).join('/'); };
-  let diagN=0, diagWorst=0;
-  function layoutReport(tag){
-    const crash=document.getElementById('crash');
-    if(!crash) return;
-    // 本物のエラーが出ていたらそちらを優先（帯は1本しかない）
-    if(!crash.hidden && crash.dataset.owner!=='layout') return;
-    // 測るのは #play(コースと右列)。#wrap だと見出しやフッターのはみ出しまで
-    // 拾ってしまい、遊ぶのに支障が無い場面でも鳴る
-    const playEl=document.getElementById('play');
-    const r=playEl.getBoundingClientRect();
-    if(!r.width && !r.height) return;   // 縦持ちで隠れている間は測らない
-    const overR=Math.round(r.right-innerWidth),  overB=Math.round(r.bottom-innerHeight);
-    const overL=Math.round(-r.left),             overT=Math.round(-r.top);
-    const over=Math.max(overR,overB,overL,overT);
-    const m=q=>matchMedia(q).matches?1:0;
-    const app=navigator.standalone?1:m('(display-mode:standalone)');
-    diagN++; if(over>diagWorst) diagWorst=over;
-    if(!DIAG) return;
-    crash.dataset.owner='layout';
-    crash.textContent=(over>1?'NG はみ出し':'OK 収まっている')
-      +' 右'+overR+' 下'+overB+' 左'+overL+' 上'+overT
-      +' / 画面'+innerWidth+'x'+innerHeight
-      +' svh'+svhProbe.offsetHeight
-      +' vh'+(getComputedStyle(document.documentElement).getPropertyValue('--vh').trim()||'-')
-      +' 外'+(window.outerWidth||0)+'x'+(window.outerHeight||0)
-      +' 可視'+(window.visualViewport?Math.round(visualViewport.width)+'x'+Math.round(visualViewport.height)
-                +'@'+(visualViewport.scale||1).toFixed(2):'-')
-      +' cl'+document.documentElement.clientWidth+'x'+document.documentElement.clientHeight
-      +' dpr'+(window.devicePixelRatio||0)
-      +' 逃げ'+saRead()
-      +' 原点'+Math.round(document.documentElement.getBoundingClientRect().top)
-      +' / 版'+(ovbuild.textContent||'?').replace('更新 ','')
-      +' / 横'+m('(orientation:landscape)')
-      +' 高600以下'+m('(max-height:600px)')
-      +' hover'+m('(hover:hover)')
-      +' fine'+m('(pointer:fine)')
-      +' アプリ'+app
-      +' / 最悪'+diagWorst+' #'+diagN+' '+(tag||'');
-    crash.hidden=false;
-  }
-  // 起動直後に何度も測る。崩れが一瞬で直る場合も、ずっと残る場合も取りこぼさない
-  for(const ms of [0,100,300,600,1200,2500,5000]) setTimeout(()=>layoutReport('t'+ms),ms);
-  addEventListener('resize',          ()=>setTimeout(()=>layoutReport('resize'),200));
-  // 回転直後は iOS が値を返しきっていないことがあるので、何度か測り直す
-  addEventListener('orientationchange',()=>{
-    for(const ms of [400,1200,2500]) setTimeout(()=>layoutReport('rotate'+ms),ms);
-  });
-  // 「何か触ったら直った」を捕まえる。指を離すたびに測り直す
-  addEventListener('pointerup',       ()=>setTimeout(()=>layoutReport('tap'),120));
+  // ===== 描画 =====
+  const pilotImg=new Image();
+  pilotImg.src='assets/rally_pilot.png';
+  const titleImg=new Image();
+  titleImg.src='assets/rally_title.jpg';
 
-  // idle preview
+  // 右のサイドパネル: 咲耶の立ち絵（4:3）とレーダー（33:25）。下の余白は操作ボタン用
+  function drawSide(){
+    const x=SIDE_X, w=SIDE_W, pad=8, iw=w-pad*2;
+    ctx.fillStyle='#150f1a'; ctx.fillRect(x,0,w,VH);
+    ctx.fillStyle=C.wall2; ctx.fillRect(x,0,2,VH);   // 迷路との境目
+    const ih=Math.round(iw*3/4);
+    if(pilotImg.complete && pilotImg.naturalWidth) ctx.drawImage(pilotImg, x+pad, pad, iw, ih);
+    kit.retro.frame(x+pad, pad, iw, ih);
+    const ry=pad+ih+8, rh=Math.round(iw*ROWS/COLS);
+    if(grid){
+      ctx.save(); ctx.translate(x+pad, ry);
+      ctx.beginPath(); ctx.rect(0,0,iw,rh); ctx.clip();
+      drawRadar(ctx, iw, rh, 1);
+      ctx.restore();
+    }
+    kit.retro.frame(x+pad, ry, iw, rh);
+  }
+
+  // タイトル画面: 迷路を暗く敷き、題字と遊び方を載せる
+  function drawTitle(){
+    ctx.fillStyle='rgba(21,15,26,.9)'; ctx.fillRect(0,0,VW,VH);
+    const c=kit.retro.colors;
+    ctx.save();
+    ctx.textAlign='center';
+    ctx.fillStyle=c.gold; ctx.font=kit.retro.font(22);
+    ctx.fillText('SAKUYA NOUN RALLY', VW/2, 46);
+    ctx.fillStyle=c.magenta; ctx.font=kit.retro.font(10);
+    ctx.fillText('- COLLECT 11 CNP -', VW/2, 66);
+    const lines=['CNP11体を集めて、出口へ戻れ。通った跡が得点。',
+      '車は止まらない ― 曲がる方向だけ決める。',
+      '壁に当たると自動で右へ。行き止まりだけ跳ね返る。',
+      '赤い車に触れるとクラッシュ。車は3台。',
+      '茶色の岩は避けろ ― 乗ると即ミス。敵は乗ると大破する。',
+      'SMOKE で敵はスピン。ただし燃料を多く食う。',
+      '燃料が尽きると減速し、8秒で力尽きる。',
+      '塗り進めると青いガソリン缶が落ちる。',
+      'ゴールすると残燃料・残機・踏破率がボーナスになる。'];
+    ctx.fillStyle=c.ink; ctx.font=kit.retro.fontBody(13);
+    lines.forEach((s,i)=>ctx.fillText(s, VW/2, 100+i*23));
+    ctx.restore();
+  }
+
+  // 描いた迷路の右にサイドパネル、タイトル中は題字を重ねる。
+  // 一時停止の幕と結果画面は kit がこの上に描く
+  let wasBlocked=false;
+  function draw(){
+    // 縦持ちで止めている間は BGM も止める
+    const blocked=kit.orientationBlocked;
+    if(blocked!==wasBlocked){
+      wasBlocked=blocked;
+      if(state==='play' && !kit.paused){ if(blocked) bgmStop(); else bgmStart(); }
+    }
+    render();
+    drawSide();
+    if(kit.phase==='title') drawTitle();
+  }
+
+  // idle preview（タイトル画面の後ろに敷く迷路）
   grid=genMaze(); player=mkCar(1.5*TILE,1.5*TILE,C.player,false);
   enemies=[]; targets=[]; smoke=[]; cam={x:0,y:0}; fuel=FUEL_START; score=0; got=0; t=0;
   cans=[]; canNext=0;
@@ -2708,20 +1477,6 @@ addEventListener('unhandledrejection', function(e){
   paint=new Uint8Array(COLS*ROWS); painted=0; openTotal=openCells().length;
   rosterFlash=new Float32Array(NTARGET);
   exitCell=farthestCell(grid); exitOpen=false;
-  render(); renderRadar();
-
-  // 向きの監視はここで始める。updateOrientation() は state / bgmOn を触るので、
-  // すべての宣言が終わったあとでなければ呼べない。
-  // （以前は定義の直後で呼んでいた。横で開くと should===orientationBlocked で
-  //   早期 return するため気づかず、縦で開いた実機だけが死んでいた）
-  booted=true;
-  if(typeof portraitMQ.addEventListener==='function') portraitMQ.addEventListener('change',updateOrientation);
-  else if(typeof portraitMQ.addListener==='function') portraitMQ.addListener(updateOrientation);
-  addEventListener('orientationchange',updateOrientation);
-  addEventListener('resize',updateOrientation);
-  setInterval(updateOrientation,250);   // イベントの取りこぼしに対する保険
-  updateOrientation();
-})();
-</script>
+  </script>
 </body>
 </html>

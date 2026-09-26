@@ -1,16 +1,37 @@
 {
   "name": "咲耶Nounラリー",
-  "short_name": "咲耶ラリー",
+  "short_name": "咲耶Nounラリー",
   "description": "迷路に散らばった CNP 11体を集めて出口へ戻る、ラリーX系のブラウザゲーム。",
-  "start_url": "/",
-  "scope": "/",
+  "start_url": "./",
+  "scope": "./",
   "display": "standalone",
   "orientation": "landscape",
-  "background_color": "#150f1a",
-  "theme_color": "#150f1a",
+  "background_color": "#06070C",
+  "theme_color": "#06070C",
   "lang": "ja",
   "icons": [
-    { "src": "favicon-32.png", "sizes": "32x32", "type": "image/png" },
-    { "src": "apple-touch-icon.png", "sizes": "180x180", "type": "image/png", "purpose": "any" }
+    {
+      "src": "favicon-32.png",
+      "sizes": "32x32",
+      "type": "image/png"
+    },
+    {
+      "src": "apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
   ]
 }
