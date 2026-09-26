@@ -1990,7 +1990,10 @@ addEventListener('unhandledrejection', function(e){
      GAS_URL が空の間は枠ごと出さない ― 未設定のまま公開しても、
      空のランキングや通信エラーを見せずに済む。
      デプロイ後にこの1行だけ差し替えれば動く */
-  const GAS_URL = 'https://script.google.com/macros/s/AKfycbzBlCGXkPA7G8d2kO9BhEDYvMdh7xAyWiuPdnMYdy1vCA6SF3EPZyaZv5wG329p6RZ9gQ/exec';
+  // 咲耶シリーズ共通のランキング（sakuya-kit/gas/apps-script.gs）。?game=rally でこのタイトルの
+  // シートを読み書きし、他のタイトルと合わせた総合ランキングにも載る。旧スプレッドシート(score2)の
+  // 記録は共通のスプレッドシートへ取り込み済み
+  const GAS_URL = 'https://script.google.com/macros/s/AKfycby-UoKAfHw4eBULVb37tQzwPEhNm65B_HUktd9Sh0ZxMdOdmnRHdub0NeeXUCAqg8bG/exec?game=rally';
 
   const rankEl   = document.getElementById('rank');
   const rankList = document.getElementById('ranklist');
@@ -2035,7 +2038,8 @@ addEventListener('unhandledrejection', function(e){
           ' rel="noopener noreferrer">@'+esc(xid)+'</a>'
         : '';
       const dev = r.device==='モバイル' ? '\uD83D\uDCF1 ' : r.device==='PC' ? '\uD83D\uDCBB ' : '';
-      const sub = '踏破 '+(r.paint|0)+'% ・ CNP '+(r.cnp|0)+'/'+NTARGET+
+      // 共通GASは踏破率を progress という名前で返す（旧GASは paint）
+      const sub = '踏破 '+((r.paint!=null ? r.paint : r.progress)|0)+'% ・ CNP '+(r.cnp|0)+'/'+NTARGET+
                   (r.cleared ? ' ・ クリア' : '');
       return '<li class="rank-row">'+
         '<span class="rank-no">'+medal+'</span>'+
