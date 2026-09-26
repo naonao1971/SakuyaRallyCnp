@@ -220,7 +220,6 @@
   // タイヤ痕。1マスにつき bit1=横に通った / bit2=縦に通った。
   // 方向を持つのは、痕を進行方向に沿った2本の線で描くため
   let paint, painted;     // painted は塗ったマス数（得点と踏破率に使う）
-  let rosterFlash;        // ロスターの枠が光る残り秒数。targets と同じ並び
   let exitCell, exitOpen; // 出口。11体そろうまで開かない
   let tunnels=[];     // ワープトンネルの口。左右1組
   let dryT;           // 燃料が尽きてからの経過秒。DRY_TIME で力尽きる
@@ -525,7 +524,6 @@
     cans=[]; canNext=0;
     lives=LIVES_START; invul=0; dryT=0; carName=0;
     paint=new Uint8Array(COLS*ROWS); painted=0; openTotal=cells.length;
-    rosterFlash=new Float32Array(NTARGET);
     exitCell=farthestCell(grid); exitOpen=false;
     placePlayer();
     // スタート・ポーズ・演出動画・ランキングの出し入れは kit が受け持つ
@@ -630,7 +628,6 @@
     // 最大でも 7.9px(2.625*3) で、TILE=24 を飛び越すことはない
     const k = dt*60;
     if(invul>0) invul-=dt;
-    for(let i=0;i<rosterFlash.length;i++) if(rosterFlash[i]>0) rosterFlash[i]-=dt;
     if(carName>0) carName-=dt;
     // 燃料切れは即死ではなく減速。そこから DRY_TIME 秒かけて止まり、
     // 止まった時点で終わる。stepCar より前に効かせる必要がある
@@ -710,7 +707,7 @@
       if(tg.got) continue;
       if(Math.hypot(player.x-tg.x,player.y-tg.y)<CHAR_HIT){
         tg.got=true; got++; score += 100 + got*20; beep(600+got*30,.07);
-        rosterFlash[ti]=ROSTER.flash;   // どの枠が埋まったか視線を誘導する
+        kit.cnp.run.collect(tg.ch.no);   // 上段のロスターの枠が光り、どの枠が埋まったか視線を誘導する
         // 11体そろっても即クリアにしない。出口が開き、そこへ戻るまでが一走り。
         // 戻る道中も塗れるので、最後に得点を伸ばす余地が残る
         if(got===NTARGET){ exitOpen=true; exitFanfare(); }
@@ -1063,12 +1060,12 @@
     // HUD帯。下に迷路は無いので透かす必要がない。透かすと帯が読みにくくなる
     ctx.fillStyle='#150f1a'; ctx.fillRect(0,0,VW,HUD_H);
     ctx.fillStyle=C.wall2;  ctx.fillRect(0,HUD_H-2,VW,2);   // 境目のヘアライン
-    ctx.fillStyle=C.ink; ctx.font='bold 12px ui-monospace,monospace'; ctx.textAlign='left';
+    ctx.fillStyle=C.ink; ctx.font=kit.retro.font(10); ctx.textAlign='left';
     ctx.fillText('CNP '+got+'/'+NTARGET, 8,15);
     ctx.textAlign='center';
     ctx.fillText(exitOpen ? 'GO TO EXIT!' : 'SCORE '+score, VW/2,15);
-    if(exitOpen){ ctx.font='bold 10px ui-monospace,monospace';
-      ctx.fillText('SCORE '+score, VW/2, 15+11); ctx.font='bold 12px ui-monospace,monospace'; }
+    if(exitOpen){ ctx.font=kit.retro.font(8);
+      ctx.fillText('SCORE '+score, VW/2, 15+11); ctx.font=kit.retro.font(10); }
     ctx.textAlign='right'; ctx.fillText('BEST '+Math.max(kit.score.hi, score), VW-8,15);
     // fuel = 制限時間
     ctx.fillStyle='#120c18'; ctx.fillRect(8,VH-14,VW-112,10);
@@ -1095,14 +1092,14 @@
     if(carName>0){
       const car=CARS[carIndex()];
       ctx.globalAlpha=Math.min(1,carName);
-      ctx.font='bold 15px ui-monospace,monospace'; ctx.textAlign='center';
+      ctx.font=kit.retro.font(12); ctx.textAlign='center';
       ctx.fillStyle=car.c; ctx.fillText(car.n+' CAR', VW/2, HUD_H+34);
       ctx.globalAlpha=1;
     }
-    ctx.fillStyle=C.ink; ctx.font='bold 8px ui-monospace,monospace'; ctx.textAlign='left'; ctx.fillText('FUEL',8,VH-16);
+    ctx.fillStyle=C.ink; ctx.font=kit.retro.font(8); ctx.textAlign='left'; ctx.fillText('FUEL',8,VH-16);
     // 燃料が尽きたら「減速した」ことを伝える。黙って遅くすると故障に見える
     if(fuel<=0 && ((t*3)|0)%2===0){
-      ctx.fillStyle=C.enemy; ctx.font='bold 9px ui-monospace,monospace';
+      ctx.fillStyle=C.enemy; ctx.font=kit.retro.font(8);
       ctx.fillText('OUT OF FUEL - '+Math.ceil(DRY_TIME-dryT), 36, VH-16);
     }
     // 残りの車。いま走っている1台は数えない（アーケードの流儀）。
@@ -1149,40 +1146,13 @@
     g.fillRect((player.x/TILE)*sx-1.5*u,(player.y/TILE)*sy-1.5*u,3*u,3*u);
   }
 
-  // 画面上段のロスター。11枠を常に並べ、取った枠だけ絵を起こす。
-  //   未収集   … シルエット + 減光した琥珀の枠
-  //   収集済み … 絵を全光量 + キャラ色の枠
-  //   取った瞬間 … 枠が白く光る
-  // targets[i] の絵は CNP[i] なので、並び順はゲーム中ずっと変わらない
+  // 画面上段のロスター。シリーズ共通の部品（kit.hud.roster）で描く。
+  // kit は canvas 全体の中央に並べるので、迷路の幅（VW）の中央へずらして描く
   function drawRoster(){
-    const s=ROSTER.slot, gap=ROSTER.gap, y=ROSTER.y;
-    const totalW=NTARGET*s+(NTARGET-1)*gap;
-    const x0=Math.round((VW-totalW)/2);
-    for(let i=0;i<NTARGET;i++){
-      const tg=targets[i]; if(!tg) continue;
-      const ch=tg.ch, x=x0+i*(s+gap);
-      const has=tg.got;
-      const fl=rosterFlash[i]>0 ? rosterFlash[i]/ROSTER.flash : 0;
-      ctx.fillStyle = has ? 'rgba(21,15,26,.92)' : 'rgba(12,8,16,.82)';
-      ctx.fillRect(x,y,s,s);
-      ctx.save();
-      ctx.beginPath(); ctx.rect(x,y,s,s); ctx.clip();
-      const d=s*0.88, cx=x+s/2, cy=y+s/2;
-      if(has && ch.ready){
-        ctx.drawImage(ch.img, cx-d/2, cy-d/2, d, d);
-      }else{
-        const sil=silhouette(ch);
-        if(sil) ctx.drawImage(sil, cx-d/2, cy-d/2, d, d);
-        else { ctx.fillStyle='rgba(232,197,106,.18)'; ctx.fillRect(x+4,y+4,s-8,s-8); }
-      }
-      ctx.restore();
-      ctx.lineWidth=2;
-      ctx.strokeStyle = has
-        ? `hsla(${ch.hue},80%,${60+fl*35}%,${0.9+fl*0.1})`
-        : 'rgba(232,197,106,.26)';
-      ctx.strokeRect(x+1,y+1,s-2,s-2);
-      if(fl>0){ ctx.fillStyle=`rgba(255,255,255,${fl*0.45})`; ctx.fillRect(x,y,s,s); }
-    }
+    ctx.save();
+    ctx.translate(VW/2 - cv.width/2, 0);
+    kit.hud.roster({ y:ROSTER.y, slot:ROSTER.slot, gap:ROSTER.gap, count:false });
+    ctx.restore();
   }
 
   // クラッシュ。CNP・スコア・迷路は引き継ぎ、自機と敵の配置だけやり直す。
@@ -1475,7 +1445,6 @@
   cans=[]; canNext=0;
   lives=LIVES_START; invul=0; dryT=0; carName=0;
   paint=new Uint8Array(COLS*ROWS); painted=0; openTotal=openCells().length;
-  rosterFlash=new Float32Array(NTARGET);
   exitCell=farthestCell(grid); exitOpen=false;
   </script>
 </body>
