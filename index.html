@@ -31,7 +31,7 @@
   <meta name="twitter:image" content="https://rally.naoblock.jp/ogp.png" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/naonao1971/sakuya-kit@0.4.0/kit.css" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/naonao1971/sakuya-kit@0.5.0/kit.css" />
   <style>
     /* タイトル固有の色だけ上書きする（部品の寸法・配置は kit のまま）。
        ラリーは紫がかった地で、咲耶スクランブルより少し明るい */
@@ -70,7 +70,7 @@
       <li>車は止まらない ― 決められるのは曲がる方向だけ。壁に当たると自動で右へ。行き止まりだけ跳ね返る。</li>
       <li>赤い敵車に触れるとクラッシュ。車は3台まで。</li>
       <li>茶色の岩は避けろ ― 乗ると即ミス。敵は乗ると大破し、5秒戻らない。</li>
-      <li>SMOKE（💨）で敵をスピンさせられるが、燃料を多く食う。燃料が尽きると減速し、8秒で力尽きる。</li>
+      <li>SMOKE（A ボタン）で敵をスピンさせられるが、燃料を多く食う。燃料が尽きると減速し、8秒で力尽きる。</li>
       <li>塗り進めると青いガソリン缶が落ちる ― まだ塗っていない道にだけ出る。</li>
       <li>ゴールすると残燃料・残機・踏破率がボーナスになる。</li>
       <li>スマホ: 画面のどこでも押したまま倒す ・ PC: 矢印/WASD、Space=煙、M=音、P=一時停止</li>
@@ -80,7 +80,7 @@
   <script type="module">
   // 共通部分は sakuya-kit（https://github.com/naonao1971/sakuya-kit）。版を上げるときは
   // kit.css と同じ番号にそろえ、CHANGELOG を読んでから実機で確かめる
-  import { createKit } from "https://cdn.jsdelivr.net/gh/naonao1971/sakuya-kit@0.4.0/kit.js";
+  import { createKit } from "https://cdn.jsdelivr.net/gh/naonao1971/sakuya-kit@0.5.0/kit.js";
 
   const cv = document.getElementById('c'), ctx = cv.getContext('2d');
   // 迷路を描く範囲（左）と、立ち絵・レーダーのサイドパネル（右）
@@ -117,8 +117,10 @@
       // 迷路なので4方向に丸める。canvas の上ならどこでも押したまま倒せる
       stickDigital4: true,
       stickArea: 'canvas',
+      // シリーズ共通のボタン配置（F3）: A と ⚙ 設定。音・全画面は ⚙ の中
+      layout: 'ab',
       buttons: [
-        { id: 'smoke', label: '💨', ariaLabel: 'SMOKE（煙幕）', keys: ['Space'], primary: true,
+        { id: 'smoke', slot: 'A', hint: 'SMOKE', ariaLabel: 'SMOKE（煙幕）', keys: ['Space'],
           onPress: () => { emitting = true; }, onRelease: () => { emitting = false; } },
       ],
     },
@@ -143,7 +145,7 @@
       },
     },
     help: {
-      mobile: '画面のどこでも押したまま倒すと曲がる。右下の💨で煙幕',
+      mobile: '画面のどこでも押したまま倒すと曲がる。A で煙幕、⚙ で設定',
       pc: '矢印/WASDで曲がる ・ Spaceで煙幕 ・ Mで音 ・ Pで一時停止',
       playing: '車は止まらない ― 曲がる方向だけ決める',
     },
